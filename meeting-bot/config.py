@@ -1,0 +1,2 @@
+meet_link="YOUR_MEETING_LINK"
+name="YOUR_MEET_NAME"
