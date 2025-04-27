@@ -131,6 +131,15 @@
     background-color: #dc2626;
 }
 
+.user-message ul {
+    margin-top: 10px;
+    padding-left: 20px;
+}
+
+.user-message li {
+    margin-bottom: 5px;
+}
+
 
     </style>
     <script>
@@ -143,7 +152,7 @@
 
             const userMessage = document.createElement('div');
             userMessage.classList.add('message', 'user-message');
-            userMessage.innerText = message;
+            userMessage.innerHTML = message;
             chatBox.appendChild(userMessage);
             inputField.value = "";
 
@@ -158,7 +167,7 @@
             const data = await res.json();
             const botMessage = document.createElement('div');
             botMessage.classList.add('message', 'bot-message');
-            botMessage.innerText = data.answer;
+            botMessage.innerHTML = data.answer;
             chatBox.appendChild(botMessage);
 
             chatBox.scrollTop = chatBox.scrollHeight;
@@ -183,9 +192,13 @@
     <div class="chat-container">
         <div class="chat-box" id="chat-box">
             {% for chat in chats %}
-                <div class="message {% if chat.sender == 'user' %}user-message{% else %}bot-message{% endif %}">
+            <div class="message {% if chat.sender == 'user' %}user-message{% else %}bot-message{% endif %}">
+                {% if chat.sender == 'bot' %}
+                    {{ chat.message | safe }}
+                {% else %}
                     {{ chat.message }}
-                </div>
+                {% endif %}
+            </div>            
             {% endfor %}
             {% if summary %}
                 <div class="message bot-message">

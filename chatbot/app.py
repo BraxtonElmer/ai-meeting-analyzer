@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from chatbot import MeetingChatbot
+import markdown
+from markupsafe import Markup
 from config import GEMINI_API_KEY
 import database
 
@@ -8,6 +10,9 @@ app.secret_key = 'tung tung tung tung tung tung tung sahur'
 
 with open('uploads/meeting_captions.txt', 'r', encoding='utf-8') as f:
     transcript_text = f.read()
+
+def format_markdown(text):
+    return Markup(markdown.markdown(text))
 
 # Initialize database
 database.init_db()
@@ -101,10 +106,13 @@ def ask():
 
     answer = chatbot.ask_question(question)
 
+    formatted_answer = format_markdown(answer)
+
     database.save_chat(session['user_id'], question, 'user')
     database.save_chat(session['user_id'], answer, 'bot')
 
-    return jsonify({'answer': answer})
+    return jsonify({'answer': str(formatted_answer)})
+
 
 
 
