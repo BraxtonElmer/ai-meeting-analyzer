@@ -99,6 +99,39 @@
             background-color: #cbd5e1;
             border-radius: 3px;
         }
+        .header {
+    display: flex;
+    align-items: flex-start;
+    padding: 15px 20px;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.user-info {
+    display: flex;
+    flex-direction: column;
+    font-size: 15px;
+    color: #374151;
+}
+
+.logout-button {
+    margin-top: 8px;
+    background-color: #ef4444;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    width: fit-content;
+    transition: background-color 0.3s;
+}
+
+.logout-button:hover {
+    background-color: #dc2626;
+}
+
+
     </style>
     <script>
         async function sendMessage() {
@@ -134,14 +167,28 @@
 </head>
 <body>
 
-<div class="chat-container">
+    <div class="header">
+        <div class="user-info">
+            <div>Logged in as <strong>{{ full_name }}</strong></div>
+            <a class="logout-button" href="/logout">Logout</a>
+        </div>
+    </div>
+    
+    
+    <div class="chat-container">
     <div class="chat-box" id="chat-box">
+        {% for sender, message in chats %}
+            <div class="message {% if sender == 'user' %}user-message{% else %}bot-message{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
         {% if summary %}
             <div class="message bot-message">
                 {{ summary }}
             </div>
         {% endif %}
     </div>
+    
 
     <div class="input-area">
         <input type="text" id="user-input" placeholder="Type your message..." onkeydown="if(event.key === 'Enter') sendMessage();">
