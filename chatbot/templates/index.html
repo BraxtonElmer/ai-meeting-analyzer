@@ -163,6 +163,11 @@
 
             chatBox.scrollTop = chatBox.scrollHeight;
         }
+
+        window.onload = function() {
+        const chatBox = document.getElementById('chat-box');
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
     </script>
 </head>
 <body>
@@ -176,18 +181,18 @@
     
     
     <div class="chat-container">
-    <div class="chat-box" id="chat-box">
-        {% for sender, message in chats %}
-            <div class="message {% if sender == 'user' %}user-message{% else %}bot-message{% endif %}">
-                {{ message }}
-            </div>
-        {% endfor %}
-        {% if summary %}
-            <div class="message bot-message">
-                {{ summary }}
-            </div>
-        {% endif %}
-    </div>
+        <div class="chat-box" id="chat-box">
+            {% for chat in chats %}
+                <div class="message {% if chat.sender == 'user' %}user-message{% else %}bot-message{% endif %}">
+                    {{ chat.message }}
+                </div>
+            {% endfor %}
+            {% if summary %}
+                <div class="message bot-message">
+                    {{ summary }}
+                </div>
+            {% endif %}
+        </div>        
     
 
     <div class="input-area">
