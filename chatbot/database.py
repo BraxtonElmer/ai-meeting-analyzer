@@ -52,6 +52,15 @@ def get_user(email, password):
     conn.close()
     return user
 
+def get_user_by_email(email):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT id, email, full_name FROM users WHERE email = %s', (email,))
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
 def save_chat(user_id, message, sender):
     conn = get_connection()
     cursor = conn.cursor()

@@ -68,7 +68,16 @@
     </style>
 </head>
 <body>
-
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div style="padding: 10px; margin: 10px; background-color: #fde68a; color: #92400e; border-radius: 5px;">
+        {% for message in messages %}
+          <div>{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  
 <div class="login-container">
     <h2>Login</h2>
     <form method="POST">

@@ -15,22 +15,33 @@ database.init_db()
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        full_name = request.form['full_name']
-        email = request.form['email']
-        password = request.form['password']
-        re_password = request.form['re_password']
+        full_name = request.form.get('full_name')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        re_password = request.form.get('re_password')
 
-        # Check if passwords match
+        if not full_name or not email or not password or not re_password:
+            flash('Please fill in all fields.')
+            return redirect(url_for('register'))
+        
+
+        existing_user = database.get_user_by_email(email)
+        if existing_user:
+            flash('Email already exists.')
+            return redirect(url_for('register'))
+        
+
         if password != re_password:
             flash('Passwords do not match!')
             return redirect(url_for('register'))
         
-        # Try to create the user
-        if database.create_user(full_name, email, password):
+        
+        success = database.create_user(full_name, email, password)
+        if success:
             flash('Registration successful! Please log in.')
             return redirect(url_for('login'))
         else:
-            flash('Error: Email already exists!')
+            flash('An unexpected error occurred. Please try again.')
             return redirect(url_for('register'))
     
     return render_template('register.html')
@@ -39,10 +50,13 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+        email = request.form.get('email')
+        password = request.form.get('password')
 
-        # Fetch user from DB
+        if not email or not password:
+            flash('Please enter both email and password.')
+            return redirect(url_for('login'))
+
         user = database.get_user(email, password)
         if user:
             session['user_id'] = user['id']
@@ -50,10 +64,11 @@ def login():
             session['full_name'] = user['full_name']
             return redirect(url_for('index'))
         else:
-            flash('Invalid credentials!')
+            flash('Invalid email or password. Please try again.')
             return redirect(url_for('login'))
 
     return render_template('login.html')
+
 
 
 @app.route('/logout')

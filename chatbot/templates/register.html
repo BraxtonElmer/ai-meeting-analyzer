@@ -63,10 +63,33 @@
             margin-bottom: 10px;
             text-align: center;
         }
+        .register-link {
+            margin-top: 15px;
+            font-size: 14px;
+            text-align: center;
+            color: #666;
+        }
+        .register-link a {
+            color: #4f46e5;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .register-link a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
-
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div style="padding: 10px; margin: 10px; background-color: #fde68a; color: #92400e; border-radius: 5px;">
+        {% for message in messages %}
+          <div>{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  
 <div class="register-container">
     <h2>Create Account</h2>
     {% if error %}
@@ -79,6 +102,9 @@
         <input type="password" name="re_password" placeholder="Re-enter Password" required>
         <button type="submit">Register</button>
     </form>
+    <div class="register-link">
+        Already have an account? <a href="/login">Login</a>
+    </div>
 </div>
 
 </body>
