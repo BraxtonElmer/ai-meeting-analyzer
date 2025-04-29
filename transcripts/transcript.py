@@ -49,7 +49,7 @@ def combine_transcription_and_diarization(transcription_result, diarization_resu
     return combined
 
 # Path to your audio file
-audio_path = r"D:\code\internship\ai-meeting-analyzer\transcripts\audio\agentic_ai_conversation_indian_accent.mp3"  # Change this to your actual file
+audio_path = r"D:\code\internship\ai-meeting-analyzer\transcripts\audio\test.wav"
 
 # Step 1: Get transcription with timestamps
 transcription_result = transcribe_audio(audio_path)
