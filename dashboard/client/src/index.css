@@ -1,0 +1,161 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 222.2 84% 4.9%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    
+    --secondary: 244.2 79.9% 58%;
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    
+    --accent: 152.9 60.2% 52.7%;
+    --accent-foreground: 210 40% 98%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    
+    --radius: 0.5rem;
+    
+    --chart-1: 221.2 83.2% 53.3%;
+    --chart-2: 244.2 79.9% 58%;
+    --chart-3: 152.9 60.2% 52.7%;
+    --chart-4: 355.6 100% 94.7%;
+    --chart-5: 20.5 90.2% 48.2%;
+    
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-primary: 221.2 83.2% 53.3%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 152.9 60.2% 52.7%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 221.2 83.2% 53.3%;
+
+    --success: 152.9 60.2% 52.7%;
+    --warning: 38 92% 50%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    
+    --card: 222.2 84% 9.8%;
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    
+    --secondary: 244.2 79.9% 58%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    
+    --accent: 152.9 60.2% 52.7%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+
+    --chart-1: 217.2 91.2% 59.8%;
+    --chart-2: 244.2 79.9% 58%;
+    --chart-3: 152.9 60.2% 52.7%;
+    --chart-4: 355.6 100% 94.7%;
+    --chart-5: 20.5 90.2% 48.2%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Avatar background colors */
+  .bg-gray-200 {
+    background-color: #E5E7EB;
+    color: #4B5563;
+  }
+  
+  .bg-indigo-100 {
+    background-color: #E0E7FF;
+    color: #4338CA;
+  }
+  
+  .bg-blue-100 {
+    background-color: #DBEAFE;
+    color: #2563EB;
+  }
+  
+  .bg-green-100 {
+    background-color: #D1FAE5;
+    color: #059669;
+  }
+  
+  .bg-yellow-100 {
+    background-color: #FEF3C7;
+    color: #D97706;
+  }
+  
+  .bg-purple-100 {
+    background-color: #EDE9FE;
+    color: #7C3AED;
+  }
+  
+  .bg-pink-100 {
+    background-color: #FCE7F3;
+    color: #DB2777;
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #999;
+  }
+}
