@@ -1,0 +1,13 @@
+meeting_id,from_speaker,to_speaker,transition_smoothness,sentiment
+1,Alice,Bob,1.0,Positive
+1,Bob,Charlie,1.0,Positive
+2,Ravi,Anil,1.0,Positive
+2,Anil,Karan,0.66,Positive
+2,Karan,Meera,1.0,Positive
+2,Meera,Priya,1.0,Positive
+2,Priya,Divya,1.0,Positive
+3,Ananya,Neha,1.0,Positive
+3,Neha,Pooja,1.0,Positive
+3,Pooja,Vikram,1.0,Positive
+3,Vikram,Arjun,1.0,Positive
+3,Arjun,Ravi,1.0,Positive
