@@ -1,69 +1,31 @@
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
-import config
+import whisper
+from whisper_mic import MicrophoneStream
 
-# Meet link
-meet_link = config.meet_link
+# Initialize Whisper model
+model = whisper.load_model("base")
 
-# Name you want to appear as
-guest_name = config.name
+# Create a function to process the audio
+def process_audio(audio_data):
+    # Normalize and convert to float32
+    audio_data_float32 = audio_data.astype(np.float32) / 32768.0  # Normalize int16 to [-1.0, 1.0]
+    
+    # Transcribe the audio using Whisper
+    result = model.transcribe(audio_data_float32)
+    print("Transcription:", result['text'])
 
-# Chrome options to block camera and mic permissions
-options = uc.ChromeOptions()
-prefs = {
-    "profile.default_content_setting_values.media_stream_mic": 2,     # Block microphone
-    "profile.default_content_setting_values.media_stream_camera": 2,  # Block camera
-    "profile.default_content_setting_values.geolocation": 2,          # Block location access
-    "profile.default_content_setting_values.notifications": 2         # Block notifications
-}
-options.add_experimental_option("prefs", prefs)
-options.add_argument("--start-maximized")
+# Create a MicrophoneStream instance
+mic_stream = MicrophoneStream(model=model, callback=process_audio)
 
-# Launch browser with options
-driver = uc.Chrome(options=options)
-wait = WebDriverWait(driver, 20)
+# Start capturing and processing audio from the microphone
+print("Recording...")
+mic_stream.start()
 
-driver.maximize_window()
-
-driver.get(meet_link)
-
-# Wait for the page to load
-time.sleep(5)
-
+# Optional: Add a break condition or sleep time to make it run smoothly (you can press Ctrl+C to stop the process)
 try:
-    # Click "Continue without them" if appears
-    try:
-        continue_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "Continue without microphone and camera")]')))
-        continue_button.click()
-        print("Clicked 'Continue without microphone and camera' button.")
-    except Exception:
-        print("Disable Access to microphone and camera button not found.")
+    while True:
+        pass  # Keep running until interrupted
+except KeyboardInterrupt:
+    print("Recording stopped by user.")
 
-    # Enter name in the input box
-    name_box = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[aria-label="Your name"]')))
-    name_box.send_keys(guest_name)
-
-    time.sleep(1)
-
-    # Click "Ask to join" button
-    ask_to_join = wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "Ask to join")]')))
-    ask_to_join.click()
-
-    print("Asked to join the meeting as guest!")
-
-
-    gotit = wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "Got it")]')))
-    gotit.click()
-
-except Exception as e:
-    print(f"Error: {str(e)}")
-
-# to end the program
-# driver.quit()
-print("Bot has finished interacting with Meet. Browser will stay open now.")
-while True:
-    time.sleep(10)
-# having an infinite loop to keep the browser open
+# Stop the microphone stream when finished
+mic_stream.stop()
