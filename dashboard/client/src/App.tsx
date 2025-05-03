@@ -11,6 +11,7 @@ import Tasks from "@/pages/tasks";
 import Settings from "@/pages/settings";
 import AuthPage from "@/pages/auth-page";
 import ImportMeeting from "@/pages/import-meeting";
+import Reports from "@/pages/reports";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
@@ -120,6 +121,26 @@ function Router() {
           </AppLayout>
         )} 
       />
+      
+      <ProtectedRoute 
+        path="/reports" 
+        component={() => (
+          <AppLayout>
+            <Reports />
+          </AppLayout>
+        )} 
+      />
+      
+      <ProtectedRoute 
+        path="/reports/:id" 
+        component={() => (
+          <AppLayout>
+            <Reports />
+          </AppLayout>
+        )} 
+      />
+      
+
       
       {/* Not found route */}
       <Route component={NotFound} />

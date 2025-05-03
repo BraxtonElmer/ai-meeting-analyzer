@@ -1,4 +1,4 @@
-# Meeting AI Assistant
+# MeetingSmart AI Assistant
 
 An intelligent web portal for AI-powered meeting management that provides real-time transcription, collaborative tools, and advanced analytics.
 
@@ -32,8 +32,8 @@ An intelligent web portal for AI-powered meeting management that provides real-t
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/braxtonelmer/ai-meeting-analyzer
-   cd dashboard
+   git clone https://github.com/yourusername/meetingsmart.git
+   cd meetingsmart
    ```
 
 2. **Install dependencies**:
@@ -44,7 +44,7 @@ An intelligent web portal for AI-powered meeting management that provides real-t
 3. **Create a `.env` file** in the project root with the following configuration:
    ```
    # Database configuration
-   DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/dashboard
+   DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/meetingsmart
    
    # Gemini API key (required for AI features)
    GEMINI_API_KEY=your_gemini_api_key

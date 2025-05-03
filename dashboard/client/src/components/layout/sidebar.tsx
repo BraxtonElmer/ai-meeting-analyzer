@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   { href: '/live-meeting', label: 'Live Meetings', icon: 'record_voice_over' },
   { href: '/past-meetings', label: 'Past Meetings', icon: 'history' },
   { href: '/import-meeting', label: 'Import Meeting', icon: 'add_link' },
+  { href: '/reports', label: 'Analytics', icon: 'analytics' },
   { href: '/tasks', label: 'Tasks', icon: 'task_alt' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
