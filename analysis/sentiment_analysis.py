@@ -2,17 +2,29 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer, util
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import re
+import json
+from collections import defaultdict
+from sqlalchemy import create_engine, text
+import os
+from dotenv import load_dotenv
 
-# Load the data
-transcripts_df = pd.read_csv(r"D:\code\internship\ai-meeting-analyzer\analysis\cleaning\transcripts_clean2.csv")
-agenda_df = pd.read_csv(r"D:\code\internship\ai-meeting-analyzer\analysis\data\cleaned_agenda.csv")
+# Load environment variables
+load_dotenv()
+
+# Get database configuration from environment variables
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set")
+
+# Create PostgreSQL database engine
+engine = create_engine(DATABASE_URL)
 
 # Load models
 model = SentenceTransformer('all-MiniLM-L6-v2')
 analyzer = SentimentIntensityAnalyzer()
 
 # Smooth transition phrases
-smooth_phrases = ["moving on", "next", "let’s talk", "shifting to", "as mentioned"]
+smooth_phrases = ["moving on", "next", "let's talk", "shifting to", "as mentioned"]
 
 # Appreciation words
 appreciation_words = ['great', 'good', 'excellent', 'well done', 'perfect']
@@ -34,7 +46,6 @@ def parse_speakers(transcript_text):
         if speaker.strip() not in speakers:
             speakers[speaker.strip()] = ""
         speakers[speaker.strip()] += " " + speech.strip()
-
     return speakers
 
 # Analyze sentiment and transitions between speakers
@@ -87,38 +98,95 @@ def analyze_sentiment_and_transitions(speaker_segments):
 
     return results
 
-# Process each meeting
-all_results = []
-for idx, row in transcripts_df.iterrows():
-    meeting_id = row['meeting_id']
-    
-    # Extract transcript text
-    transcript_cols = [col for col in transcripts_df.columns if col.startswith("transcript")]
-    transcript = " ".join([str(row[col]) for col in transcript_cols if pd.notnull(row[col])])
-    
-    # Parse speaker segments
-    speaker_segments = parse_speakers(transcript)
+def main():
+    try:
+        # Query to get transcripts data
+        query = text("""
+            SELECT 
+                meeting_id,
+                meeting_title,
+                transcript0,
+                transcript1
+            FROM transcripts
+            WHERE transcript0 IS NOT NULL OR transcript1 IS NOT NULL
+            ORDER BY meeting_id
+        """)
+        
+        # Execute query and load results into a DataFrame
+        with engine.connect() as connection:
+            df = pd.read_sql(query, connection)
+        
+        # Group transcriptions by meeting
+        all_results = []
+        for meeting_id, group in df.groupby('meeting_id'):
+            # Combine all transcriptions for this meeting
+            transcript_text = ""
+            for _, row in group.iterrows():
+                if pd.notna(row['transcript0']):
+                    transcript_text += row['transcript0'] + "\n"
+                if pd.notna(row['transcript1']):
+                    transcript_text += row['transcript1'] + "\n"
+            
+            # Parse speaker segments
+            speaker_segments = parse_speakers(transcript_text)
 
-    # ✅ Debug check
-    print(f"\n--- Debugging Meeting ID {meeting_id} ---")
-    print(f"Transcript snippet:\n{transcript[:300]}")
-    print("Parsed speakers:", list(speaker_segments.keys()))
+            # Debug check
+            print(f"\n--- Debugging Meeting ID {meeting_id} ---")
+            print(f"Meeting Title: {group['meeting_title'].iloc[0]}")
+            print(f"Transcript snippet:\n{transcript_text[:300]}")
+            print("Parsed speakers:", list(speaker_segments.keys()))
 
-    if len(speaker_segments) < 2:
-        print(f"Skipping Meeting ID {meeting_id} - Less than 2 speakers parsed.")
-        continue
+            if len(speaker_segments) < 2:
+                print(f"Skipping Meeting ID {meeting_id} - Less than 2 speakers parsed.")
+                continue
 
-    # Analyze sentiment
-    meeting_results = analyze_sentiment_and_transitions(speaker_segments)
-    for result in meeting_results:
-        result["meeting_id"] = meeting_id
-    all_results.extend(meeting_results)
+            # Analyze sentiment
+            meeting_results = analyze_sentiment_and_transitions(speaker_segments)
+            for result in meeting_results:
+                result["meeting_id"] = meeting_id
+                result["meeting_title"] = group['meeting_title'].iloc[0]
+            all_results.extend(meeting_results)
 
-# Create DataFrame for transitions across all meetings
-transition_df = pd.DataFrame(all_results)
+        # Create DataFrame for transitions across all meetings
+        transition_df = pd.DataFrame(all_results)
 
-# Show transition data
-print(transition_df)
+        # Show transition data
+        print("\nTransition Analysis Results:")
+        print(transition_df)
 
-# Save the results to a CSV file
-transition_df.to_csv("meeting_transitions_with_sentiment.csv", index=False)
+        # Convert DataFrame to list of dictionaries
+        results_list = transition_df.to_dict('records')
+
+        # Group results by meeting_id
+        grouped_results = defaultdict(list)
+        meeting_titles = {}  # Store meeting titles
+        for result in results_list:
+            meeting_id = result['meeting_id']
+            meeting_titles[meeting_id] = result['meeting_title']  # Store the title
+            grouped_results[meeting_id].append({
+                'from_speaker': result['from_speaker'],
+                'to_speaker': result['to_speaker'],
+                'transition_smoothness': result['transition_smoothness'],
+                'sentiment': result['sentiment']
+            })
+
+        # Convert to final format
+        final_results = []
+        for meeting_id, transitions in grouped_results.items():
+            final_results.append({
+                'meeting_id': meeting_id,
+                'meeting_title': meeting_titles[meeting_id],  # Use stored title
+                'transitions': transitions
+            })
+
+        # Save the results to a JSON file
+        with open('meeting_transitions.json', 'w') as f:
+            json.dump(final_results, f, indent=2)
+        print("\n✅ Results saved to: meeting_transitions.json")
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    main()
