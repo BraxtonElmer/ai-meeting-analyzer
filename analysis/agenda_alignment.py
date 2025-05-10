@@ -1,14 +1,19 @@
 import os
 import re
 import json
-import pandas as pd
 from tqdm import tqdm
 from collections import defaultdict
 from sentence_transformers import SentenceTransformer, util
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
+import pandas as pd
 
-# Load data
-transcripts_df = pd.read_csv(r"D:\code\internship\ai-meeting-analyzer\analysis\data\transcripts_clean1.csv")
-agenda_df = pd.read_csv(r"D:\code\internship\ai-meeting-analyzer\analysis\data\cleaned_agenda.csv")
+# Load environment variables
+load_dotenv()
+
+# Database connection
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
 
 # Load model
 model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -36,9 +41,16 @@ def parse_speakers(transcript_text):
 
 # Main function to analyze a meeting
 def analyze_meeting(meeting_id, transcript_text):
-    agenda_items = agenda_df[agenda_df['meeting_id'] == meeting_id]
-    results = []
+    # Get agenda items from database
+    with engine.connect() as conn:
+        agenda_query = text("""
+            SELECT a.topic
+            FROM agenda a 
+            WHERE a.meeting_id = :meeting_id
+        """)
+        agenda_items = pd.read_sql(agenda_query, conn, params={"meeting_id": meeting_id})
 
+    results = []
     transcript_embedding = model.encode(transcript_text, convert_to_tensor=True)
     topic_drifts = []
 
@@ -75,16 +87,36 @@ def analyze_meeting(meeting_id, transcript_text):
         "topics": results
     }
 
-# Process each meeting
-for row in tqdm(transcripts_df.itertuples(), total=len(transcripts_df)):
-    meeting_id = row.meeting_id
+def main():
+    try:
+        # Process each meeting
+        with engine.connect() as conn:
+            # Get all meetings with their transcripts
+            meetings_query = text("""
+                SELECT DISTINCT t.meeting_id, t.transcript0, t.transcript1
+                FROM transcripts t
+                WHERE t.transcript0 IS NOT NULL OR t.transcript1 IS NOT NULL
+            """)
+            meetings_df = pd.read_sql(meetings_query, conn)
 
-    # Combine transcript columns (e.g., transcript0, transcript1, etc.)
-    transcript_cols = [col for col in transcripts_df.columns if col.startswith("transcript")]
-    transcript = " ".join([str(getattr(row, col)) for col in transcript_cols if getattr(row, col) is not None])
+        for _, row in tqdm(meetings_df.iterrows(), total=len(meetings_df)):
+            meeting_id = row['meeting_id']
+            # Combine transcript0 and transcript1
+            transcript = ""
+            if pd.notna(row['transcript0']):
+                transcript += row['transcript0'] + "\n"
+            if pd.notna(row['transcript1']):
+                transcript += row['transcript1'] + "\n"
 
-    result = analyze_meeting(meeting_id, transcript)
+            result = analyze_meeting(meeting_id, transcript)
 
-    output_path = os.path.join(output_dir, f"meeting_{meeting_id}_drift.json")
-    with open(output_path, "w") as f:
-        json.dump(result, f, indent=4, default=convert)
+            output_path = os.path.join(output_dir, f"meeting_{meeting_id}_drift.json")
+            with open(output_path, "w") as f:
+                json.dump(result, f, indent=4, default=convert)
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    main()
