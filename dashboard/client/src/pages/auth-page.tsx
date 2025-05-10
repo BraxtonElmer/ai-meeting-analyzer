@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Redirect } from "wouter";
+import { Redirect } from "wouter"; // Ensure wouter is installed
 import { useAuth } from "@/hooks/use-auth";
 
 // Define login form schema
@@ -218,7 +218,9 @@ export default function AuthPage() {
       </div>
 
       {/* Hero column */}
-      <div className="hidden lg:block lg:w-1/2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+<div className="w-full lg:w-1/2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+
+
         <div className="flex flex-col justify-center h-full p-12">
           <h2 className="text-4xl font-bold mb-6">AI Meeting Assistant</h2>
           <p className="text-xl mb-8">Enhance your meetings with AI-powered transcription, summarization, and task extraction</p>
