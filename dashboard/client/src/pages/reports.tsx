@@ -526,8 +526,8 @@ export default function ReportsPage() {
   const [selectedMeetingId, setSelectedMeetingId] = useState<string>(meetingId || "");
 
   // Query to get all meetings
-  const { data: meetings, isLoading: isLoadingMeetings } = useQuery<Meeting[]>({
-    queryKey: ['/api/meetings'],
+   const { data: meetings, isLoading: isLoadingMeetings } = useQuery<Meeting[]>({
+    queryKey: ['/api/meetings', { status: 'completed' }],
   });
 
   // Handle meeting selection change
