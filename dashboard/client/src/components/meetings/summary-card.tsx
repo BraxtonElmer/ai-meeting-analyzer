@@ -15,22 +15,37 @@ export function SummaryCard({ summary, isLoading = false, onEditClick }: Summary
     if (!content) return { intro: '', points: [] };
     
     const lines = content.split('\n').filter(line => line.trim());
+    
+    // Check if we have lines to process
+    if (lines.length === 0) return { intro: content, points: [] };
+    
     const intro = lines[0] || '';
+    
+    // Look for bullet points with * or - or •
     const points = lines
       .slice(1)
-      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('•'))
-      .map(line => line.replace(/^[-•]\s*/, '').trim());
+      .filter(line => {
+        const trimmed = line.trim();
+        return trimmed.startsWith('-') || 
+               trimmed.startsWith('•') || 
+               trimmed.startsWith('*');
+      })
+      .map(line => {
+        // Remove any bullet point character and trim
+        return line.replace(/^[-•*]\s*/, '').trim();
+      });
     
     return { intro, points };
   };
 
+  console.log('Summary content for card:', summary ? `Found: ${summary.substring(0, 50)}...` : 'Empty or undefined');
   const { intro, points } = parseSummary(summary);
 
   return (
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
         <CardTitle className="text-base">AI Summary</CardTitle>
-        <Badge variant="outline" className="text-xs text-primary bg-primary bg-opacity-10 py-1 px-2">
+        <Badge variant="outline" className="text-xs text-primary bg-primary/10 py-1 px-2">
           Auto-generated
         </Badge>
       </CardHeader>
@@ -44,7 +59,9 @@ export function SummaryCard({ summary, isLoading = false, onEditClick }: Summary
           </div>
         ) : summary ? (
           <div className="space-y-3 text-sm">
-            <p className="text-gray-700">{intro}</p>
+            {/* If we parsed the summary successfully in a structured format */}
+            {intro && <p className="text-gray-700">{intro}</p>}
+            
             {points.length > 0 && (
               <ul className="list-disc pl-5 text-gray-600 space-y-2">
                 {points.map((point, index) => (
@@ -52,25 +69,22 @@ export function SummaryCard({ summary, isLoading = false, onEditClick }: Summary
                 ))}
               </ul>
             )}
+            
+            {/* If we couldn't parse it in a structured way, show the raw summary with preserved line breaks */}
+            {(!intro && points.length === 0) && (
+              <div className="text-gray-700 whitespace-pre-wrap">
+                {summary}
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-6 text-gray-500">
             <span className="material-icons text-3xl mb-2">summarize</span>
             <p>No summary available yet.</p>
             <p className="text-sm">A summary will be generated as the meeting progresses.</p>
+            <p className="text-sm mt-2">Summarization is performed by Gemini AI.</p>
           </div>
         )}
-        <div className="mt-4 flex justify-end">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-primary hover:text-primary-dark text-sm flex items-center"
-            onClick={onEditClick}
-          >
-            <span className="material-icons text-sm mr-1">edit</span>
-            Edit Summary
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );

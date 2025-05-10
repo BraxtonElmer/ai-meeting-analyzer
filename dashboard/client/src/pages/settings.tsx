@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,6 +21,8 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
+import { Loader2 } from 'lucide-react';
 
 const profileFormSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters."),
@@ -49,16 +51,28 @@ type AiSettingsValues = z.infer<typeof aiSettingsSchema>;
 export default function Settings() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { toast } = useToast();
+  const { user, isLoading } = useAuth();
   
-  // Profile form
+  // Profile form with dynamic values based on current user
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-      fullName: "Alex Morgan",
-      email: "alex.m@company.com",
-      username: "alexmorgan",
+      fullName: "",
+      email: "",
+      username: "",
     },
   });
+  
+  // Update form values when user data is loaded
+  useEffect(() => {
+    if (user) {
+      profileForm.reset({
+        fullName: user.fullName || "",
+        email: user.email || "",
+        username: user.username || "",
+      });
+    }
+  }, [user, profileForm]);
 
   // Notifications form
   const notificationsForm = useForm<NotificationsValues>({
@@ -82,13 +96,7 @@ export default function Settings() {
     },
   });
 
-  const onProfileSubmit = (data: ProfileFormValues) => {
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been updated successfully.",
-    });
-    console.log("Profile form submitted:", data);
-  };
+  // Profile submit is implemented below
 
   const onNotificationsSubmit = (data: NotificationsValues) => {
     toast({
@@ -105,6 +113,63 @@ export default function Settings() {
     });
     console.log("AI settings form submitted:", data);
   };
+
+  // State for the profile form submission loading status
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Update the user profile using the API
+  const onProfileSubmit = async (data: ProfileFormValues) => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/user/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update profile');
+      }
+      
+      const updatedUser = await response.json();
+      
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully.",
+      });
+      
+      // Refresh the form with updated values if needed
+      profileForm.reset({
+        fullName: updatedUser.fullName,
+        email: updatedUser.email,
+        username: updatedUser.username,
+      });
+      
+    } catch (error: any) {
+      toast({
+        title: "Update failed",
+        description: error.message || "There was a problem updating your profile.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <>
+        <Header title="Settings" setIsMobileOpen={setIsMobileOpen} />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
+          <div className="max-w-4xl mx-auto flex flex-col items-center justify-center h-full">
+            <Loader2 className="w-10 h-10 animate-spin text-primary" />
+            <p className="mt-4 text-muted-foreground">Loading your settings...</p>
+          </div>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -124,10 +189,19 @@ export default function Settings() {
             <TabsContent value="profile">
               <Card>
                 <CardHeader>
-                  <CardTitle>Profile</CardTitle>
-                  <CardDescription>
-                    Manage your account information and preferences.
-                  </CardDescription>
+                  <div className="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-8">
+                    {user && (
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-semibold ${user.avatarColor}`}>
+                        {user.avatarInitials}
+                      </div>
+                    )}
+                    <div>
+                      <CardTitle>Profile</CardTitle>
+                      <CardDescription>
+                        Manage your account information and preferences.
+                      </CardDescription>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <Form {...profileForm}>
@@ -174,7 +248,16 @@ export default function Settings() {
                         )}
                       />
                       
-                      <Button type="submit">Save Changes</Button>
+                      <Button type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </Button>
                     </form>
                   </Form>
                 </CardContent>

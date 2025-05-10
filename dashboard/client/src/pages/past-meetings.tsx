@@ -134,9 +134,14 @@ function MeetingCard({ meeting }: MeetingCardProps) {
             {formatDate(meeting.startTime)} • {formatTime(meeting.startTime)}
             {meeting.endTime && ` - ${formatTime(meeting.endTime)}`}
           </p>
-          <div className="flex items-center mt-2">
-            <span className="material-icons text-sm text-gray-500 mr-1">group</span>
-            <span className="text-sm text-gray-500">{meeting.participants.length} participants</span>
+          <div className="mt-2">
+            <div className="flex items-center mb-1">
+              <span className="material-icons text-sm text-gray-500 mr-1">group</span>
+              <span className="text-sm text-gray-500">{meeting.participants.length} participants</span>
+            </div>
+            <div className="text-sm text-gray-500">
+              {meeting.participants.map(p => p.fullName).join(', ')}
+            </div>
           </div>
         </div>
         <div className="flex items-center space-x-2 mt-4 md:mt-0">

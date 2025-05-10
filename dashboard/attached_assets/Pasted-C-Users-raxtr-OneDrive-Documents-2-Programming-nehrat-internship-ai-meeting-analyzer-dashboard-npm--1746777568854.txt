@@ -1,0 +1,38 @@
+C:\Users\raxtr\OneDrive\Documents\2 Programming\nehrat internship\ai-meeting-analyzer\dashboard>npm run dev
+
+> rest-express@1.0.0 dev
+> tsx server/index.ts
+
+Checking database tables...
+Error checking database tables: TypeError: Invalid URL
+    at new URL (node:internal/url:816:29)
+    at Object.parse (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:841:225)
+    at parse (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:848:1)
+    at new ConnectionParameters (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:869:23)
+    at new Client (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1226:35)
+    at new NeonClient (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1570:121)
+    at Cn.newClient (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1378:74)
+    at Cn.connect (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1378:23)
+    at Cn.query (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1407:63)
+    at Cn.query (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1623:14) {
+  code: 'ERR_INVALID_URL',
+  input: 'DATABASE_URL=postgresql://neondb_owner:npg_n7umgwIQ3XAR@ep-shrill-shadow-a6ivhg1j.us-west-2.aws.neon.tech/neondb?sslmode=require'     
+}
+Using PostgreSQL session store
+Gemini AI initialized successfully
+No tables found. Initializing database schema...
+Error initializing database schema: TypeError: Invalid URL
+    at new URL (node:internal/url:816:29)
+    at Object.parse (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:841:225)
+    at parse (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:848:1)
+    at new ConnectionParameters (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:869:23)
+    at new Client (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1226:35)
+    at new NeonClient (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1570:121)
+    at Cn.newClient (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1378:74)
+    at Cn.connect (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1378:23)
+    at Cn.query (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1407:63)
+    at Cn.query (file:///C:/Users/raxtr/OneDrive/Documents/2%20Programming/nehrat%20internship/ai-meeting-analyzer/dashboard/node_modules/@neondatabase/serverless/index.mjs:1623:14) {
+  code: 'ERR_INVALID_URL',
+  input: 'DATABASE_URL=postgresql://neondb_owner:npg_n7umgwIQ3XAR@ep-shrill-shadow-a6ivhg1j.us-west-2.aws.neon.tech/neondb?sslmode=require'     
+}
+1:29:03 PM [express] serving on port 5000

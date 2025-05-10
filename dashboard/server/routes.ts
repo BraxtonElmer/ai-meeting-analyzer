@@ -29,6 +29,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Store active connections by meeting ID
   const connectionsByMeeting = new Map<number, Set<WebSocket>>();
+  
+  // Store custom report data
+  const customReportData = new Map<string, any>();
 
   // Ping all clients every 30 seconds to keep connections alive
   const pingInterval = setInterval(() => {
@@ -98,36 +101,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Process messages based on type
         switch (data.type) {
           case 'transcription_update':
-            // Add transcription to database
-            const entry = await storage.addTranscriptionEntry(
-              meetingId,
-              data.userId,
-              data.text
-            );
-            
-            // Broadcast to all clients in the meeting
-            broadcastToMeeting(meetingId, {
-              type: 'transcription',
-              data: { entry },
-              meetingId,
-              timestamp: new Date().toISOString()
-            });
-            
-            // Attempt to update summary if we have enough entries
-            const entries = await storage.getTranscriptionEntries(meetingId);
-            if (entries.length % 5 === 0) { // Every 5 entries
-              try {
-                // Generate AI summary and broadcast it
-                const summary = await generateMeetingSummaryFromId(meetingId);
-                broadcastToMeeting(meetingId, {
-                  type: 'summary',
-                  data: { summary },
-                  meetingId,
+            try {
+              // Create a request-like object with only the headers we need for checkUserMeetingAccess
+              const requestLike = { headers: req.headers };
+              
+              // Check if user has access to this meeting
+              const hasAccess = await checkUserMeetingAccess(requestLike, meetingId);
+              if (!hasAccess) {
+                console.warn(`Unauthorized WebSocket attempt to add transcription for meeting ${meetingId}`);
+                ws.send(JSON.stringify({
+                  type: 'error',
+                  data: { message: 'Unauthorized access to this meeting' },
                   timestamp: new Date().toISOString()
-                });
-              } catch (error) {
-                console.error('Failed to generate summary:', error);
+                }));
+                break;
               }
+            
+              // Add transcription to database
+              const entry = await storage.addTranscriptionEntry(
+                meetingId,
+                data.userId,
+                data.text
+              );
+              
+              // Broadcast to all clients in the meeting
+              broadcastToMeeting(meetingId, {
+                type: 'transcription',
+                data: { entry },
+                meetingId,
+                timestamp: new Date().toISOString()
+              });
+              
+              // Attempt to update summary if we have enough entries
+              const entries = await storage.getTranscriptionEntries(meetingId);
+              if (entries.length % 5 === 0) { // Every 5 entries
+                try {
+                  // Generate AI summary and broadcast it
+                  const summary = await generateMeetingSummaryFromId(meetingId);
+                  broadcastToMeeting(meetingId, {
+                    type: 'summary',
+                    data: { summary },
+                    meetingId,
+                    timestamp: new Date().toISOString()
+                  });
+                } catch (error) {
+                  console.error('Failed to generate summary:', error);
+                }
+              }
+            } catch (error) {
+              console.error('Error handling transcription update:', error);
+              ws.send(JSON.stringify({
+                type: 'error',
+                data: { message: 'Failed to process transcription' },
+                timestamp: new Date().toISOString()
+              }));
+            }
+            break;
+            
+          case 'custom_report_data':
+            // Handle custom report data submission
+            if (!data.reportType || !data.reportData) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                data: { message: 'Missing reportType or reportData' },
+                timestamp: new Date().toISOString()
+              }));
+              break;
+            }
+
+            // Validate report type
+            const validReportTypes = ['sentiment', 'topics', 'tone', 'participants'];
+            if (!validReportTypes.includes(data.reportType)) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                data: { message: 'Invalid reportType. Must be one of: sentiment, topics, tone, participants' },
+                timestamp: new Date().toISOString()
+              }));
+              break;
+            }
+            
+            // Check if user has access to this meeting
+            try {
+              // Create a request-like object with only the headers we need for checkUserMeetingAccess
+              // This is a simplified approach for WebSockets
+              const requestLike = { headers: req.headers };
+              
+              const hasAccess = await checkUserMeetingAccess(requestLike, meetingId);
+              if (!hasAccess) {
+                console.warn(`Unauthorized WebSocket attempt to submit report data for meeting ${meetingId}`);
+                ws.send(JSON.stringify({
+                  type: 'error',
+                  data: { message: 'Unauthorized access to this meeting' },
+                  timestamp: new Date().toISOString()
+                }));
+                break;
+              }
+              
+              // Store the custom report data
+              const customKey = `${data.reportType}-${meetingId}`;
+              customReportData.set(customKey, data.reportData);
+              
+              // Send confirmation
+              ws.send(JSON.stringify({
+                type: 'custom_report_data_confirmation',
+                data: { 
+                  message: `${data.reportType} data stored successfully for meeting ${meetingId}`,
+                  reportType: data.reportType
+                },
+                timestamp: new Date().toISOString()
+              }));
+              
+              // Broadcast to all clients that new report data is available
+              broadcastToMeeting(meetingId, {
+                type: 'report_data_updated',
+                data: { 
+                  reportType: data.reportType
+                },
+                meetingId,
+                timestamp: new Date().toISOString()
+              });
+            } catch (error) {
+              console.error(`Error handling custom ${data.reportType} data:`, error);
+              ws.send(JSON.stringify({
+                type: 'error',
+                data: { message: `Failed to process ${data.reportType} data` },
+                timestamp: new Date().toISOString()
+              }));
             }
             break;
             
@@ -218,13 +317,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Helper function to check if user has access to a meeting
+  async function checkUserMeetingAccess(req: any, meetingId: number): Promise<boolean> {
+    // For HTTP requests that have authenticated users
+    if (req && req.isAuthenticated && req.isAuthenticated()) {
+      if (!req.user || !('id' in req.user)) {
+        return false;
+      }
+      
+      const userId = Number(req.user.id);
+      const meeting = await storage.getMeetingById(meetingId);
+      
+      if (!meeting) {
+        return false;
+      }
+      
+      // Check if user is the creator of the meeting
+      if (meeting.creatorId === userId) {
+        return true;
+      }
+      
+      // Check if user is a participant
+      const isParticipant = meeting.participants.some(p => 
+        // Check if the participant is this user
+        p.id === userId
+      );
+      
+      if (isParticipant) {
+        return true;
+      }
+      
+      return false;
+    } 
+    // For WebSocket connections or other requests
+    else {
+      // We should require proper authentication for WebSocket connections as well
+      // This would typically involve checking auth cookies or tokens
+      // For now, we'll be more restrictive and require authentication
+      console.log("Non-authenticated request access check for meeting", meetingId);
+      return false; // Changed to false to enforce authentication for all requests
+    }
+  }
+  
   // Helper function to extract tasks from meeting transcript using Gemini
   async function extractTasksFromId(meetingId: number): Promise<any[]> {
     try {
-      const transcriptions = await storage.getTranscriptionEntries(meetingId) as TranscriptionEntryWithUser[];
-      if (transcriptions.length === 0) {
+      // First check if the meeting exists
+      const meeting = await storage.getMeetingById(meetingId);
+      if (!meeting) {
+        console.error(`Cannot extract tasks: Meeting with ID ${meetingId} not found`);
         return [];
       }
+      
+      // Get transcription entries
+      const transcriptions = await storage.getTranscriptionEntries(meetingId) as TranscriptionEntryWithUser[];
+      if (transcriptions.length === 0) {
+        console.log(`No transcription entries found for meeting ID ${meetingId}`);
+        return [];
+      }
+      
+      console.log(`Processing ${transcriptions.length} transcription entries for task extraction from meeting "${meeting.title}"`);
       
       // Format transcriptions for the AI
       const transcript = transcriptions.map(entry => {
@@ -233,24 +385,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).join('\n');
       
       // Request task extraction from Gemini
+      console.log("Sending transcript to Gemini for task extraction...");
       const tasks = await extractTasks(transcript);
+      console.log(`Received ${tasks.length} tasks from Gemini:`, JSON.stringify(tasks));
       
-      // Save tasks to the database
-      for (const task of tasks) {
-        const userId = await storage.findUserIdByName(task.assignee);
-        await storage.createTask({
-          meetingId,
-          title: task.description,
-          assigneeId: userId || undefined,
-          dueDate: task.dueDate || undefined,
-          completed: false
-        });
+      // Check if we have existing tasks for this meeting
+      const existingTasks = await storage.getTasksByMeeting(meetingId);
+      if (existingTasks.length > 0) {
+        console.log(`Found ${existingTasks.length} existing tasks for this meeting. Will skip duplicate tasks.`);
       }
       
-      return tasks;
+      // Track tasks we add to avoid duplicates
+      const addedTaskTitles = new Set(existingTasks.map(t => t.title.toLowerCase()));
+      const addedTasks = [];
+      
+      // Save tasks to the database, but skip any that already exist
+      for (const task of tasks) {
+        // Skip empty tasks
+        if (!task.description || task.description.trim() === '') {
+          continue;
+        }
+        
+        // Check for duplicates
+        const normalizedTitle = task.description.toLowerCase();
+        if (addedTaskTitles.has(normalizedTitle)) {
+          console.log(`Skipping duplicate task: ${task.description}`);
+          continue;
+        }
+        
+        // Find assignee user ID
+        const assigneeName = task.assignee || '';
+        let userId = null;
+        if (assigneeName) {
+          userId = await storage.findUserIdByName(assigneeName);
+          if (!userId) {
+            console.log(`Could not find user ID for assignee: ${assigneeName}`);
+          } else {
+            console.log(`Found user ID ${userId} for assignee: ${assigneeName}`);
+          }
+        }
+        
+        // Create the task
+        try {
+          await storage.createTask({
+            meetingId,
+            title: task.description,
+            assigneeId: userId || undefined,
+            dueDate: task.dueDate || undefined,
+            completed: false
+          });
+          
+          addedTaskTitles.add(normalizedTitle);
+          addedTasks.push(task);
+          console.log(`Created task: "${task.description}" ${userId ? `assigned to user ${userId}` : 'unassigned'}`);
+        } catch (err) {
+          console.error(`Error creating task "${task.description}":`, err);
+        }
+      }
+      
+      console.log(`Successfully added ${addedTasks.length} new tasks for meeting ID ${meetingId}`);
+      return addedTasks;
     } catch (error) {
       console.error('Error extracting tasks:', error);
-      throw error;
+      return []; // Return empty array instead of throwing
     }
   }
 
@@ -270,9 +467,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return `${userName}: ${entry.text}`;
       }).join('\n');
       
-      // Request answer from Gemini
+      // Request answer from Gemini with meeting status
       const meetingTitle = meeting?.title || 'Unknown';
-      const answer = await answerMeetingQuestion(transcript, meetingTitle, question);
+      const meetingStatus = meeting?.status || 'completed'; // Default to completed for imported meetings
+      
+      // Pass meeting status to the answer function
+      const answer = await answerMeetingQuestion(transcript, meetingTitle, question, meetingStatus);
       
       return answer;
     } catch (error) {
@@ -289,8 +489,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const status = req.query.status as string | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
       const search = req.query.search as string | undefined;
+      const userId = req.user?.id;
       
-      const meetings = await storage.getMeetings({ status, limit, search });
+      const meetings = await storage.getMeetings({ status, limit, search, userId });
       res.json(meetings);
     } catch (error) {
       console.error('Error fetching meetings:', error);
@@ -298,46 +499,401 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Import meeting from Google Meet
+  // Import meeting from Google Meet or transcript file
   app.post('/api/meetings/import', async (req, res) => {
     try {
-      const { meetingUrl, title, description } = req.body;
+      const { meetingUrl, title, description, transcriptContent } = req.body;
       
-      if (!meetingUrl || !title) {
-        return res.status(400).json({ message: 'Meeting URL and title are required' });
+      if (!title) {
+        return res.status(400).json({ message: 'Title is required' });
+      }
+
+      let meetCode = null;
+      if (meetingUrl) {
+        const meetCodeMatch = meetingUrl.match(/meet\.google\.com\/([\w-]+)/);
+        meetCode = meetCodeMatch ? meetCodeMatch[1] : null;
+      }
+
+      // Process transcript file content if provided
+      interface FormattedTranscript {
+        speaker: string;
+        text: string;
+      }
+      let formattedTranscript: FormattedTranscript[] = [];
+      if (transcriptContent) {
+        const prompt = `
+          Convert this transcript text into a structured format. For each speaker's line, identify:
+          1. The speaker's name (if available)
+          2. The spoken text
+          
+          Format each line as: "Speaker Name: Spoken text"
+          If no speaker is identified, use "Unknown Speaker"
+          Try to consistently identify the same speakers throughout the transcript.
+          If the text matches a conversation pattern like "John: What do you think?" followed by "I think it's great",
+          infer that the second line is from a different speaker.
+          
+          Transcript:
+          ${transcriptContent}
+        `;
+        
+        try {
+          const { geminiModel } = await import('./gemini');
+          if (geminiModel) {
+            // Enhanced prompt for better speaker detection
+            const enhancedPrompt = `
+              You are a meeting transcription parser. I'll give you meeting transcript text that may be poorly formatted.
+              
+              YOUR TASK:
+              Extract the speaker name and spoken text from each line of a meeting transcript.
+              
+              RULES:
+              1. Look for patterns like "Name: text", "Name - text", timestamps + names, etc.
+              2. Use consistent speaker names throughout (don't abbreviate some and use full names for others)
+              3. If a speaker can't be identified, use "Unknown Speaker"
+              4. Detect when consecutive lines are from different speakers even if not explicitly marked
+              5. Never create new text that wasn't in the original
+              
+              Return ONLY a JSON array with each entry having "speaker" and "text" fields:
+              [
+                {"speaker": "John Smith", "text": "Welcome everyone to our meeting."},
+                {"speaker": "Sarah Johnson", "text": "Thanks for organizing this."}
+              ]
+              
+              FORMAT EXACTLY AS SHOWN ABOVE - ONLY VALID JSON.
+              
+              Here's the transcript to parse:
+              
+              ${transcriptContent}
+            `;
+            
+            console.log("Sending enhanced prompt to Gemini for transcript parsing");
+            const response = await geminiModel.generateContent(enhancedPrompt);
+            
+            if (response) {
+              const formattedText = response.response.text();
+              
+              // Try to extract JSON from the response
+              try {
+                // Find anything that looks like a JSON array in the response
+                const jsonPattern = /\[\s*\{[\s\S]*\}\s*\]/g;
+                const jsonMatch = formattedText.match(jsonPattern);
+                
+                if (jsonMatch) {
+                  const jsonStr = jsonMatch[0];
+                  console.log("Found JSON pattern in Gemini response");
+                  
+                  const parsedData = JSON.parse(jsonStr);
+                  if (Array.isArray(parsedData) && parsedData.length > 0 && 'speaker' in parsedData[0]) {
+                    formattedTranscript = parsedData;
+                    console.log(`Successfully parsed ${formattedTranscript.length} entries from Gemini JSON response`);
+                  } else {
+                    throw new Error("Invalid JSON structure in Gemini response");
+                  }
+                } else {
+                  // If no JSON pattern found, try with line parsing
+                  console.log("No JSON pattern found in Gemini response, trying line parsing");
+                  formattedTranscript = formattedText.split('\n')
+                    .filter((line: string) => line.trim())
+                    .map((line: string) => {
+                      // Better detection of speaker vs text with more robust parsing
+                      const match = line.match(/^([^:]+):\s+(.+)$/);
+                      if (match) {
+                        return {
+                          speaker: match[1].trim(),
+                          text: match[2].trim()
+                        };
+                      } else {
+                        // Try to detect names followed by statement
+                        const namePattern = line.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})[\s:-]+(.+)$/);
+                        if (namePattern) {
+                          return {
+                            speaker: namePattern[1].trim(),
+                            text: namePattern[2].trim()
+                          };
+                        }
+                        return {
+                          speaker: 'Unknown Speaker',
+                          text: line.trim()
+                        };
+                      }
+                    });
+                }
+              } catch (jsonError) {
+                console.error("Failed to parse Gemini JSON response:", jsonError);
+                throw jsonError; // Rethrow to try fallback method
+              }
+              
+              // Log the extracted names to ensure we're getting proper speakers
+              const speakers = new Set(formattedTranscript.map(entry => entry.speaker));
+              console.log("Extracted speakers:", Array.from(speakers));
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to format transcript with Gemini AI:', error);
+          
+          // Enhanced fallback: Better speaker detection with multiple patterns
+          console.log("Using enhanced pattern matching fallback for transcript parsing");
+          formattedTranscript = [];
+          
+          // Define patterns to try (in order of specificity)
+          const speakerPatterns = [
+            // Time + Name: Text patterns
+            /^(\d{1,2}:\d{2}(:\d{2})?\s*[AP]M)\s+([^:]+):\s*(.+)$/i,  // 10:30 AM Name: Text
+            /^(\d{1,2}:\d{2}(:\d{2})?)\s+([^:]+):\s*(.+)$/,  // 10:30 Name: Text (without AM/PM)
+            
+            // Standard name patterns
+            /^([^:]+):\s*(.+)$/,                     // Name: Text
+            /^([^-]+)\s+-\s+(.+)$/,                  // Name - Text
+            /^\(([^)]+)\):\s*(.+)$/,                 // (Name): Text
+            /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)[\s:-]+(.+)$/,  // Full Name: Text (prioritizing capitalized names)
+            /^\[([^\]]+)\]:\s*(.+)$/,                // [Name]: Text
+          ];
+          
+          // Split transcript into lines and clean
+          const lines = transcriptContent.split('\n')
+            .filter((line: string) => line.trim().length > 1)
+            .map(line => line.trim());
+          
+          console.log(`Processing ${lines.length} lines with fallback pattern matching...`);
+          
+          // First pass: identify all possible speaker names
+          const potentialSpeakers = new Set<string>();
+          
+          // Pre-process to identify potential speakers
+          for (const line of lines) {
+            for (const pattern of speakerPatterns) {
+              const match = line.match(pattern);
+              if (match) {
+                // Different handling based on the pattern matched
+                if (pattern.toString().includes("\\d{1,2}:\\d{2}")) {
+                  // This is a timestamp pattern with name
+                  if (match[3]) potentialSpeakers.add(match[3].trim());
+                } else {
+                  // Standard name pattern
+                  potentialSpeakers.add(match[1].trim());
+                }
+                break;
+              }
+            }
+          }
+          
+          console.log("Potential speakers identified:", Array.from(potentialSpeakers));
+          
+          // Second pass: process lines with identified speakers
+          for (const line of lines) {
+            let matched = false;
+            
+            // Try patterns in order
+            for (const pattern of speakerPatterns) {
+              const match = line.match(pattern);
+              if (match) {
+                matched = true;
+                
+                // Different handling based on the pattern matched
+                if (pattern.toString().includes("\\d{1,2}:\\d{2}")) {
+                  // Timestamp pattern
+                  const speaker = match[3] ? match[3].trim() : "Unknown Speaker";
+                  const text = match[4] ? match[4].trim() : "";
+                  
+                  if (text) {
+                    formattedTranscript.push({ speaker, text });
+                  }
+                } else {
+                  // Standard pattern
+                  const speaker = match[1].trim();
+                  const text = match[2].trim();
+                  
+                  if (text) {
+                    formattedTranscript.push({ speaker, text });
+                  }
+                }
+                break;
+              }
+            }
+            
+            // If no patterns matched but line has content
+            if (!matched && line.length > 10) {
+              // Look for capitalized words at the beginning that might be names
+              const capitalizedNamePattern = line.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)[:\s-]+(.+)$/);
+              if (capitalizedNamePattern) {
+                const speaker = capitalizedNamePattern[1].trim();
+                const text = capitalizedNamePattern[2].trim();
+                formattedTranscript.push({ speaker, text });
+              } else {
+                // Default to Unknown Speaker
+                formattedTranscript.push({
+                  speaker: 'Unknown Speaker',
+                  text: line.trim()
+                });
+              }
+            }
+          }
+          
+          // Normalize transcript - combine consecutive entries from same speaker
+          const normalizedTranscript: Array<{ speaker: string; text: string }> = [];
+          let currentSpeaker = '';
+          let currentText = '';
+          
+          for (const entry of formattedTranscript) {
+            if (entry.speaker === currentSpeaker) {
+              // Same speaker, append text
+              currentText += ' ' + entry.text;
+            } else {
+              // New speaker - add previous entry if exists
+              if (currentSpeaker && currentText) {
+                normalizedTranscript.push({
+                  speaker: currentSpeaker,
+                  text: currentText
+                });
+              }
+              // Start new entry
+              currentSpeaker = entry.speaker;
+              currentText = entry.text;
+            }
+          }
+          
+          // Add final entry
+          if (currentSpeaker && currentText) {
+            normalizedTranscript.push({
+              speaker: currentSpeaker,
+              text: currentText
+            });
+          }
+          
+          formattedTranscript = normalizedTranscript;
+          
+          console.log(`Fallback extraction identified ${formattedTranscript.length} entries with speakers:`, 
+            Array.from(new Set(formattedTranscript.map(entry => entry.speaker))));
+        }
       }
       
-      // Extract Google Meet code from URL
-      const meetCodeMatch = meetingUrl.match(/meet\.google\.com\/([\w-]+)/);
-      const meetCode = meetCodeMatch ? meetCodeMatch[1] : null;
-      
-      if (!meetCode) {
-        return res.status(400).json({ message: 'Invalid Google Meet URL' });
-      }
-      
-      // Create a new meeting in the database
+      // Create a new meeting in the database 
       const now = new Date();
       const meeting = await storage.createMeeting({
         title,
         description: description || '',
         startTime: now,
-        status: 'live',
+        status: 'completed',
         externalMeetingCode: meetCode,
-        externalMeetingType: 'google_meet'
+        externalMeetingType: transcriptContent ? 'transcript_import' : 'google_meet',
+        creatorId: req.user?.id
       });
-      
-      // In a real implementation, this is where you would trigger your bot to join the meeting
-      // For this demo, we'll just simulate that process
       
       // Add the current user as a participant if authenticated
       if (req.isAuthenticated() && req.user && 'id' in req.user) {
         const userId = Number(req.user.id);
         await storage.addMeetingParticipant(meeting.id, userId);
+        
+        // If we have transcript content, create transcription entries with proper speaker identification
+        if (formattedTranscript.length > 0) {
+          // Get or create speaker users and map speakers to IDs
+          const speakerToUserIdMap = new Map<string, number>();
+          const existingUsers = await storage.getAllUsers();
+          
+          // First, try to match speakers with existing users
+          for (const entry of formattedTranscript) {
+            if (entry.speaker && !speakerToUserIdMap.has(entry.speaker)) {
+              // Try to find an existing user by name
+              const existingUser = existingUsers.find(user => 
+                user.fullName.toLowerCase() === entry.speaker.toLowerCase()
+              );
+              
+              if (existingUser) {
+                speakerToUserIdMap.set(entry.speaker, existingUser.id);
+                // Add existing user as participant if not already
+                await storage.addMeetingParticipant(meeting.id, existingUser.id);
+              }
+            }
+          }
+          
+          // Create temporary users for speakers not matched to existing users
+          const unidentifiedSpeakers = new Set<string>();
+          for (const entry of formattedTranscript) {
+            if (entry.speaker && !speakerToUserIdMap.has(entry.speaker) && entry.speaker !== 'Unknown Speaker') {
+              unidentifiedSpeakers.add(entry.speaker);
+            }
+          }
+          
+          // Create temporary users for unidentified speakers
+          for (const speaker of Array.from(unidentifiedSpeakers)) {
+            try {
+              // Generate initials for the avatar
+              const initials = speaker.split(' ')
+                .map((word: string) => word[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase();
+              
+              // Generate a random color for the avatar
+              const colors = [
+                "bg-gray-200", "bg-indigo-100", "bg-blue-100", 
+                "bg-green-100", "bg-yellow-100", "bg-purple-100", "bg-pink-100"
+              ];
+              const randomColor = colors[Math.floor(Math.random() * colors.length)];
+              
+              // Create a user for this speaker
+              const newUser = await storage.createUser({
+                username: `${speaker.replace(/\s+/g, '').toLowerCase()}_${Date.now()}`,
+                password: 'password',  // This is a placeholder as we will not use these accounts to login
+                fullName: speaker,
+                email: `${speaker.replace(/\s+/g, '').toLowerCase()}@example.com`,
+                avatarInitials: initials,
+                avatarColor: randomColor
+              });
+              
+              // Add new user as meeting participant
+              await storage.addMeetingParticipant(meeting.id, newUser.id);
+              
+              // Map the speaker to the new user ID
+              speakerToUserIdMap.set(speaker, newUser.id);
+            } catch (error) {
+              console.error(`Error creating user for speaker ${speaker}:`, error);
+            }
+          }
+          
+          // Debug information to help diagnose the speaker mapping
+          console.log("Speaker to user map:", 
+            Array.from(speakerToUserIdMap.entries()).map(([speaker, id]) => `${speaker}: ${id}`));
+          
+          // Add transcription entries using the speaker's user ID or fallback to the current user
+          for (const entry of formattedTranscript) {
+            // Always try to use the mapped speaker ID first
+            const entryUserId = speakerToUserIdMap.get(entry.speaker) || userId;
+            console.log(`Adding entry for speaker "${entry.speaker}" with userId ${entryUserId}`);
+            
+            const newEntry = await storage.addTranscriptionEntry(
+              meeting.id,
+              entryUserId,
+              entry.text
+            );
+            
+            console.log("Created entry:", newEntry);
+          }
+          
+          // Generate summary after adding transcripts
+          console.log("Generating summary for imported meeting...");
+          const summary = await generateMeetingSummaryFromId(meeting.id);
+          if (summary) {
+            console.log("Updating meeting summary...");
+            await storage.updateMeetingSummary(meeting.id, summary);
+          }
+          
+          // Extract tasks after adding transcripts
+          console.log("Extracting tasks from imported meeting...");
+          const tasks = await extractTasksFromId(meeting.id);
+          if (tasks && tasks.length > 0) {
+            console.log(`Created ${tasks.length} tasks from imported meeting`);
+          } else {
+            console.log("No tasks extracted from imported meeting");
+          }
+        }
       }
       
       // Add a system message indicating the meeting has been imported
       await storage.addChatMessage(meeting.id, {
-        content: `Meeting imported from Google Meet. Meeting code: ${meetCode}`,
+        content: meetCode 
+          ? `Meeting imported from Google Meet. Meeting code: ${meetCode}` 
+          : `Meeting transcript imported with ${formattedTranscript.length} entries.`,
         isAi: true
       });
       
@@ -358,6 +914,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Meeting not found' });
       }
       
+      // Check if user has access to this meeting using our centralized access check
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        if (!req.isAuthenticated()) {
+          return res.status(401).json({ message: 'Authentication required' });
+        } else {
+          return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
+        }
+      }
+      
+      // Log meeting details for debugging
+      console.log('Returning meeting details:', { 
+        id: meeting.id, 
+        title: meeting.title,
+        summaryExists: !!meeting.summary,
+        summaryLength: meeting.summary ? meeting.summary.length : 0,
+        summaryPreview: meeting.summary ? meeting.summary.substring(0, 100) + '...' : 'No summary'
+      });
+      
       res.json(meeting);
     } catch (error) {
       console.error('Error fetching meeting:', error);
@@ -369,6 +944,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/meetings/:id/transcription', async (req, res) => {
     try {
       const meetingId = parseInt(req.params.id);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
+      }
+      
       const transcriptions = await storage.getTranscriptionEntries(meetingId);
       res.json(transcriptions);
     } catch (error) {
@@ -478,6 +1060,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/meetings/:id/tasks', async (req, res) => {
     try {
       const meetingId = parseInt(req.params.id);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
+      }
+      
       const tasks = await storage.getTasksByMeeting(meetingId);
       res.json(tasks);
     } catch (error) {
@@ -604,6 +1193,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/meetings/:id/chat', async (req, res) => {
     try {
       const meetingId = parseInt(req.params.id);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
+      }
+      
       const messages = await storage.getChatMessages(meetingId);
       res.json(messages);
     } catch (error) {
@@ -725,27 +1321,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { text, type, meetingId } = req.body;
       
-      if (!text || !type) {
-        return res.status(400).json({ message: 'Missing required fields' });
+      if (!type) {
+        return res.status(400).json({ message: 'Missing required type field' });
+      }
+      
+      // For question type, text is required
+      if (type === 'question' && !text) {
+        return res.status(400).json({ message: 'Missing required text field for question type' });
       }
       
       let result;
       
+      console.log(`Processing AI analysis request of type "${type}" for meeting ID ${meetingId}`);
+      
       switch (type) {
         case 'summary':
           result = await generateMeetingSummaryFromId(meetingId || 0);
+          res.json({ content: result });
           break;
+          
         case 'tasks':
-          result = await extractTasksFromId(meetingId || 0);
+          // For tasks, extract them and then return the updated task list
+          const extractedTasks = await extractTasksFromId(meetingId || 0);
+          
+          if (extractedTasks && extractedTasks.length > 0) {
+            console.log(`Successfully extracted ${extractedTasks.length} tasks`);
+          } else {
+            console.log("No tasks were extracted");
+          }
+          
+          // Get all tasks for the meeting from database
+          const updatedTasksList = await storage.getTasksByMeeting(meetingId || 0);
+          
+          // Return the full updated task list
+          res.json(updatedTasksList);
           break;
+          
         case 'question':
           result = await answerMeetingQuestionFromId(meetingId || 0, text);
+          res.json({ content: result });
           break;
+          
         default:
           return res.status(400).json({ message: 'Invalid analysis type' });
       }
-      
-      res.json({ content: result });
     } catch (error) {
       console.error('Error during AI analysis:', error);
       res.status(500).json({ message: 'Failed to analyze text' });
@@ -753,14 +1372,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // REPORT API ENDPOINTS
-  
-  // Custom report data storage
-  const customReportData = new Map<string, any>();
 
   // Custom report data endpoints
-  app.post("/api/reports/custom/sentiment/:meetingId", (req, res) => {
+  app.post("/api/reports/custom/sentiment/:meetingId", async (req, res) => {
     try {
-      const meetingId = req.params.meetingId;
+      const meetingId = parseInt(req.params.meetingId);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
+      }
+      
       const key = `sentiment-${meetingId}`;
       customReportData.set(key, req.body);
       res.status(200).json({ success: true, message: "Sentiment data stored successfully" });
@@ -770,9 +1393,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reports/custom/topics/:meetingId", (req, res) => {
+  app.post("/api/reports/custom/topics/:meetingId", async (req, res) => {
     try {
-      const meetingId = req.params.meetingId;
+      const meetingId = parseInt(req.params.meetingId);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
+      }
+      
       const key = `topics-${meetingId}`;
       customReportData.set(key, req.body);
       res.status(200).json({ success: true, message: "Topic data stored successfully" });
@@ -782,9 +1412,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reports/custom/tone/:meetingId", (req, res) => {
+  app.post("/api/reports/custom/tone/:meetingId", async (req, res) => {
     try {
-      const meetingId = req.params.meetingId;
+      const meetingId = parseInt(req.params.meetingId);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'You do not have access to this meeting' });
+      }
+      
       const key = `tone-${meetingId}`;
       customReportData.set(key, req.body);
       res.status(200).json({ success: true, message: "Tone data stored successfully" });
@@ -794,9 +1431,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reports/custom/participants/:meetingId", (req, res) => {
+  app.post("/api/reports/custom/participants/:meetingId", async (req, res) => {
     try {
-      const meetingId = req.params.meetingId;
+      const meetingId = parseInt(req.params.meetingId);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'You do not have access to this meeting' });
+      }
+      
       const key = `participants-${meetingId}`;
       customReportData.set(key, req.body);
       res.status(200).json({ success: true, message: "Participant data stored successfully" });
@@ -813,6 +1457,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (isNaN(meetingId)) {
         return res.status(400).json({ message: 'Invalid meeting ID' });
+      }
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'You do not have access to this meeting' });
       }
       
       // Check if we have custom data for this meeting
@@ -907,6 +1557,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (isNaN(meetingId)) {
         return res.status(400).json({ message: 'Invalid meeting ID' });
+      }
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'You do not have access to this meeting' });
       }
       
       // Check if we have custom data for this meeting
@@ -1026,6 +1682,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (isNaN(meetingId)) {
         return res.status(400).json({ message: 'Invalid meeting ID' });
+      }
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'You do not have access to this meeting' });
       }
       
       // Check if we have custom data for this meeting
@@ -1170,6 +1832,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (isNaN(meetingId)) {
         return res.status(400).json({ message: 'Invalid meeting ID' });
+      }
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'You do not have access to this meeting' });
       }
       
       // Check if we have custom data for this meeting

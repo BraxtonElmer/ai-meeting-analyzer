@@ -32,7 +32,7 @@ An intelligent web portal for AI-powered meeting management that provides real-t
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/meetingsmart.git
+   git clone <url>
    cd meetingsmart
    ```
 

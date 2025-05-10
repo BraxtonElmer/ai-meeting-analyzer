@@ -12,7 +12,7 @@ import {
   type Task,
   type ChatMessage
 } from "@shared/schema";
-import { eq, and, desc, like, or, isNull, isNotNull, sql } from "drizzle-orm";
+import { eq, and, desc, like, or, isNull, isNotNull, sql, inArray } from "drizzle-orm";
 import connectPg from "connect-pg-simple";
 import createMemoryStore from "memorystore";
 import session from "express-session";
@@ -34,12 +34,12 @@ export const storage = {
     });
     return result || null;
   },
-  
+
   async getAllUsers(): Promise<User[]> {
     const userList = await db.query.users.findMany({
       orderBy: [users.fullName],
     });
-    
+
     return userList;
   },
 
@@ -57,26 +57,40 @@ export const storage = {
 
   async findUserIdByName(name: string): Promise<number | null> {
     if (!name) return null;
-    
+
     // Try to find user by full name (case insensitive)
     const cleanName = name.trim();
     const result = await db.query.users.findFirst({
       where: sql`LOWER(${users.fullName}) = LOWER(${cleanName})`,
       columns: { id: true }
     });
-    
+
     if (result) {
       return result.id;
     }
-    
+
     // Try by first name if full name fails
     const firstName = cleanName.split(' ')[0];
     const byFirstName = await db.query.users.findFirst({
       where: sql`LOWER(${users.fullName}) LIKE LOWER(${firstName + '%'})`,
       columns: { id: true }
     });
-    
+
     return byFirstName?.id || null;
+  },
+  
+  async updateUserProfile(userId: number, userData: {
+    username: string;
+    fullName: string;
+    email: string;
+    avatarInitials: string;
+  }): Promise<User | null> {
+    const [updatedUser] = await db.update(users)
+      .set(userData)
+      .where(eq(users.id, userId))
+      .returning();
+      
+    return updatedUser || null;
   },
 
   // Meeting functions
@@ -87,6 +101,7 @@ export const storage = {
     status: 'scheduled' | 'live' | 'completed';
     externalMeetingCode?: string | null;
     externalMeetingType?: string | null;
+    creatorId?: number | null;
   }): Promise<any> {  // Using any temporarily to bypass TypeScript's strict checking
     const [meeting] = await db.insert(meetings)
       .values({
@@ -96,16 +111,17 @@ export const storage = {
         status: data.status,
         externalMeetingCode: data.externalMeetingCode || null,
         externalMeetingType: data.externalMeetingType || null,
+        creatorId: data.creatorId || null,
       })
       .returning();
-      
+
     // Return with empty participants array
     return {
       ...meeting,
       participants: []
     };
   },
-  
+
   async addMeetingParticipant(meetingId: number, userId: number): Promise<void> {
     await db.insert(meetingParticipants)
       .values({
@@ -114,19 +130,19 @@ export const storage = {
       })
       .onConflictDoNothing();
   },
-  
+
   async getMeetings({ 
     status, 
     limit, 
-    search 
+    search,
+    userId 
   }: { 
     status?: string; 
     limit?: number; 
     search?: string;
+    userId?: number;
   }): Promise<Meeting[]> {
-    let query = db.query.meetings;
-    
-    // Build query conditionally
+    // Build the array of conditions manually
     const conditions = [];
     
     if (status) {
@@ -137,26 +153,86 @@ export const storage = {
       conditions.push(like(meetings.title, `%${search}%`));
     }
     
-    let result = await query.findMany({
-      where: conditions.length > 0 ? and(...conditions) : undefined,
-      orderBy: [desc(meetings.startTime)],
-      limit: limit,
-      with: {
-        participants: {
+    let result;
+    
+    // If userId is provided, we need to get both:
+    // 1. Meetings where user is creator
+    // 2. Meetings where user is a participant
+    if (userId) {
+      // First, get all meetings where user is creator
+      let creatorQuery = db.select().from(meetings)
+        .where(and(eq(meetings.creatorId, userId), ...conditions))
+        .orderBy(desc(meetings.startTime))
+        .limit(limit || 50);
+        
+      const creatorMeetings = await creatorQuery;
+      
+      // Second, get all meeting IDs where user is a participant
+      const participantMeetingIds = await db.select({ meetingId: meetingParticipants.meetingId })
+        .from(meetingParticipants)
+        .where(eq(meetingParticipants.userId, userId));
+        
+      // If there are participant meetings, get those too
+      if (participantMeetingIds.length > 0) {
+        // Extract just the IDs
+        const meetingIds = participantMeetingIds.map(p => p.meetingId);
+        
+        // Build a query for participant meetings
+        const participantQuery = db.select().from(meetings)
+          .where(and(
+            inArray(meetings.id, meetingIds),
+            ...conditions
+          ))
+          .orderBy(desc(meetings.startTime))
+          .limit(limit || 50);
+          
+        const participantMeetings = await participantQuery;
+        
+        // Combine and deduplicate meetings
+        const allMeetings = [...creatorMeetings, ...participantMeetings];
+        const uniqueMeetingIds = new Set();
+        result = allMeetings.filter(meeting => {
+          if (uniqueMeetingIds.has(meeting.id)) {
+            return false;
+          }
+          uniqueMeetingIds.add(meeting.id);
+          return true;
+        });
+      } else {
+        // User is not a participant in any meetings
+        result = creatorMeetings;
+      }
+    } else {
+      // No userId filter, get all meetings
+      let query = db.select().from(meetings);
+      
+      // Apply conditions if there are any
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+      
+      result = await query
+        .orderBy(desc(meetings.startTime))
+        .limit(limit || 50);
+    }
+
+    // Get participants for each meeting
+    const meetingsWithParticipants = await Promise.all(
+      result.map(async (meeting) => {
+        const participants = await db.query.meetingParticipants.findMany({
+          where: eq(meetingParticipants.meetingId, meeting.id),
           with: {
             user: true,
           },
-        },
-      },
-    });
-    
-    // Transform to include participants array
-    return result.map(meeting => {
-      return {
-        ...meeting,
-        participants: meeting.participants.map(p => p.user)
-      };
-    });
+        });
+        return {
+          ...meeting,
+          participants: participants.map(p => p.user)
+        };
+      })
+    );
+
+    return meetingsWithParticipants;
   },
 
   async getMeetingById(meetingId: number): Promise<{
@@ -167,6 +243,7 @@ export const storage = {
     status: string;
     summary: string | null;
     agenda: string[] | null;
+    creatorId: number | null;
     participants: User[];
     date: string;
     duration: string;
@@ -181,16 +258,17 @@ export const storage = {
         },
       },
     });
-    
+
     if (!result) return null;
-    
+
     // Format date and calculate duration
     const formattedDate = formatDate(result.startTime);
     const duration = calculateDuration(result.startTime, result.endTime);
-    
+
     return {
       ...result,
       participants: result.participants.map(p => p.user),
+      creatorId: result.creatorId,
       date: formattedDate,
       duration,
     };
@@ -204,6 +282,7 @@ export const storage = {
 
   // Transcription functions
   async getTranscriptionEntries(meetingId: number): Promise<TranscriptionEntry[]> {
+    // Enhanced query to ensure user information is included
     const entries = await db.query.transcriptionEntries.findMany({
       where: eq(transcriptionEntries.meetingId, meetingId),
       orderBy: [transcriptionEntries.timestamp],
@@ -211,7 +290,33 @@ export const storage = {
         user: true,
       },
     });
+
+    // Log entries to diagnose any issues with missing user information
+    console.log(`Retrieved ${entries.length} transcription entries for meeting ${meetingId}`);
     
+    // Check for entries with missing user info
+    const entriesWithMissingUser = entries.filter(entry => !entry.user);
+    if (entriesWithMissingUser.length > 0) {
+      console.warn(`Found ${entriesWithMissingUser.length} entries with missing user info`);
+      
+      // Try to fetch user information for these entries separately
+      for (let i = 0; i < entriesWithMissingUser.length; i++) {
+        const entry = entriesWithMissingUser[i];
+        try {
+          const user = await this.getUserById(entry.userId);
+          if (user) {
+            // Update the entry in the original array
+            const index = entries.findIndex(e => e.id === entry.id);
+            if (index !== -1) {
+              entries[index].user = user;
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching user info for entry ${entry.id}:`, error);
+        }
+      }
+    }
+
     return entries;
   },
 
@@ -221,7 +326,7 @@ export const storage = {
     text: string
   ): Promise<TranscriptionEntry> {
     const now = new Date();
-    
+
     const [entry] = await db.insert(transcriptionEntries)
       .values({
         meetingId,
@@ -230,7 +335,7 @@ export const storage = {
         timestamp: now,
       })
       .returning();
-    
+
     // Fetch the entry with user details
     const result = await db.query.transcriptionEntries.findFirst({
       where: eq(transcriptionEntries.id, entry.id),
@@ -238,11 +343,11 @@ export const storage = {
         user: true,
       },
     });
-    
+
     if (!result) {
       throw new Error('Failed to retrieve created transcription entry');
     }
-    
+
     return result;
   },
 
@@ -257,19 +362,19 @@ export const storage = {
     meetingId?: number;
   }): Promise<Task[]> {
     const conditions = [];
-    
+
     if (completed !== undefined) {
       conditions.push(eq(tasks.completed, completed));
     }
-    
+
     if (assigneeId) {
       conditions.push(eq(tasks.assigneeId, assigneeId));
     }
-    
+
     if (meetingId) {
       conditions.push(eq(tasks.meetingId, meetingId));
     }
-    
+
     const result = await db.query.tasks.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
       orderBy: [tasks.createdAt],
@@ -277,7 +382,7 @@ export const storage = {
         assignee: true,
       },
     });
-    
+
     return result;
   },
 
@@ -289,7 +394,7 @@ export const storage = {
         assignee: true,
       },
     });
-    
+
     return result;
   },
 
@@ -309,7 +414,7 @@ export const storage = {
         completed: taskData.completed || false,
       })
       .returning();
-    
+
     // Fetch the task with assignee details
     const result = await db.query.tasks.findFirst({
       where: eq(tasks.id, task.id),
@@ -317,11 +422,11 @@ export const storage = {
         assignee: true,
       },
     });
-    
+
     if (!result) {
       throw new Error('Failed to retrieve created task');
     }
-    
+
     return result;
   },
 
@@ -330,9 +435,9 @@ export const storage = {
       .set(updates)
       .where(eq(tasks.id, taskId))
       .returning();
-    
+
     if (!updated) return null;
-    
+
     // Fetch the task with assignee details
     const result = await db.query.tasks.findFirst({
       where: eq(tasks.id, taskId),
@@ -340,10 +445,10 @@ export const storage = {
         assignee: true,
       },
     });
-    
+
     // Handle null case explicitly for TypeScript
     if (!result) return null;
-    
+
     return result;
   },
 
@@ -356,7 +461,7 @@ export const storage = {
         sender: true,
       },
     });
-    
+
     return messages;
   },
 
@@ -369,7 +474,7 @@ export const storage = {
     }
   ): Promise<ChatMessage> {
     const now = new Date();
-    
+
     const [message] = await db.insert(chatMessages)
       .values({
         meetingId,
@@ -379,7 +484,7 @@ export const storage = {
         timestamp: now,
       })
       .returning();
-    
+
     // Fetch the message with sender details
     const result = await db.query.chatMessages.findFirst({
       where: eq(chatMessages.id, message.id),
@@ -387,11 +492,11 @@ export const storage = {
         sender: true,
       },
     });
-    
+
     if (!result) {
       throw new Error('Failed to retrieve created chat message');
     }
-    
+
     return result;
   },
 };
@@ -437,16 +542,16 @@ function calculateDuration(startTime: Date, endTime: Date | null): string {
   if (!endTime) {
     return 'In progress';
   }
-  
+
   const durationMs = endTime.getTime() - startTime.getTime();
   const minutes = Math.floor(durationMs / (1000 * 60));
-  
+
   if (minutes < 60) {
     return `${minutes} min`;
   }
-  
+
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  
+
   return `${hours} hr${hours > 1 ? 's' : ''} ${remainingMinutes} min`;
 }

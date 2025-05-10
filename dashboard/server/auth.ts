@@ -184,6 +184,56 @@ export function setupAuth(app: Express) {
     }
     res.json(req.user);
   });
+  
+  // Update user profile
+  app.post('/api/user/update', async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    try {
+      const userId = (req.user as Express.User).id;
+      const { fullName, email, username } = req.body;
+      
+      // Make sure username is unique if changed
+      if (username !== (req.user as Express.User).username) {
+        const existingUser = await storage.getUserByUsername(username);
+        if (existingUser && existingUser.id !== userId) {
+          return res.status(400).json({ message: 'Username already exists' });
+        }
+      }
+      
+      // Generate avatar initials if fullName changed
+      let avatarInitials = (req.user as Express.User).avatarInitials;
+      if (fullName !== (req.user as Express.User).fullName) {
+        avatarInitials = fullName
+          .split(' ')
+          .map((name: string) => name[0])
+          .join('')
+          .toUpperCase();
+      }
+      
+      // Update user in database
+      const updatedUser = await storage.updateUserProfile(userId, {
+        fullName,
+        email,
+        username,
+        avatarInitials
+      });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      
+      // Update session user data
+      Object.assign(req.user, updatedUser);
+      
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      res.status(500).json({ message: 'Failed to update profile' });
+    }
+  });
 
   // Middleware to check if user is authenticated
   app.use('/api/protected', (req, res, next) => {

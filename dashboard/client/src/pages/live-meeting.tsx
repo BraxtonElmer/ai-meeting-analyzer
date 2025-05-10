@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRoute } from 'wouter';
 import { Header } from '@/components/layout/header';
@@ -29,7 +29,7 @@ export default function LiveMeeting() {
   );
 
   // Fetch current meeting data with stability measures
-  const { data: meeting, isLoading: isLoadingMeeting } = useQuery<MeetingDetails>({
+  const { data: meeting, isLoading: isLoadingMeeting } = useQuery({
     queryKey: [`/api/meetings/${meetingId}`],
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: false,
@@ -55,6 +55,152 @@ export default function LiveMeeting() {
     staleTime: 10000,
     refetchOnWindowFocus: false,
   });
+  
+  // Add a mutation to fetch summary if needed
+  const generateSummaryMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/meetings/${meetingId}/summary`);
+      if (!response.ok) {
+        throw new Error('Failed to generate summary');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Update the meeting data with the new summary
+      queryClient.setQueryData(
+        [`/api/meetings/${meetingId}`],
+        (old: MeetingDetails | undefined) => {
+          if (!old) return old;
+          return { ...old, summary: data.content };
+        }
+      );
+      
+      // Show success toast
+      toast({
+        title: "Summary Generated",
+        description: "The AI meeting summary has been created successfully.",
+      });
+    },
+    onError: (error) => {
+      console.error('Error generating summary:', error);
+      
+      // Show error toast
+      toast({
+        title: "Summary Generation Failed",
+        description: "We couldn't generate a meeting summary. Please try again later.",
+        variant: "destructive"
+      });
+    }
+  });
+  
+  // Add a mutation to generate tasks from meeting transcript
+  const generateTasksMutation = useMutation({
+    mutationFn: async () => {
+      console.log(`Sending task extraction request for meeting ${meetingId}`);
+      
+      // Use the dedicated API endpoint for task extraction
+      const response = await fetch(`/api/meetings/${meetingId}/extract-tasks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Task extraction failed with status:", response.status, errorText);
+        throw new Error(`Failed to generate tasks: ${response.status} ${errorText}`);
+      }
+      
+      // After tasks are generated, fetch the updated task list
+      return await queryClient.fetchQuery<Task[]>({
+        queryKey: [`/api/meetings/${meetingId}/tasks`],
+      });
+    },
+    onSuccess: (data: Task[]) => {
+      // Show success toast
+      if (data && data.length > 0) {
+        toast({
+          title: "Tasks Extracted",
+          description: `Successfully identified ${data.length} action items from the meeting.`,
+        });
+      } else {
+        toast({
+          title: "No Tasks Found",
+          description: "No action items were identified in the meeting transcript.",
+        });
+      }
+    },
+    onError: (error) => {
+      console.error('Error extracting tasks:', error);
+      
+      // Show error toast
+      toast({
+        title: "Task Extraction Failed",
+        description: "We couldn't extract tasks from the meeting transcript. Please try again later.",
+        variant: "destructive"
+      });
+    }
+  });
+  
+  // Effect to check and generate summary if needed once per page load
+  useEffect(() => {
+    // Store attempted state in session storage to persist across refreshes
+    const summaryGenerationAttemptKey = `summary-gen-attempted-${meetingId}`;
+    const alreadyAttempted = sessionStorage.getItem(summaryGenerationAttemptKey) === 'true';
+    
+    // Only generate summary if meeting is loaded, has no summary, and has transcriptions
+    if (meeting && 
+        !meeting.summary && 
+        transcription.length > 0 && 
+        !generateSummaryMutation.isPending && 
+        !alreadyAttempted) {
+      
+      console.log('Auto-generating summary for imported meeting - one-time attempt');
+      sessionStorage.setItem(summaryGenerationAttemptKey, 'true');
+      
+      // Show a toast to let the user know we're generating a summary
+      toast({
+        title: "Generating AI Summary",
+        description: "Please wait while we analyze the meeting transcript...",
+      });
+      
+      generateSummaryMutation.mutate();
+    }
+  }, [meetingId, meeting, transcription, generateSummaryMutation, toast]);
+  
+  // Effect to check and generate tasks if needed once per page load
+  useEffect(() => {
+    // Store attempted state in session storage to persist across refreshes
+    const taskGenerationAttemptKey = `task-gen-attempted-${meetingId}`;
+    const alreadyAttempted = sessionStorage.getItem(taskGenerationAttemptKey) === 'true';
+    
+    // Check if we have transcripts but no tasks and haven't tried yet
+    const shouldGenerateTasks = 
+      meeting && 
+      transcription.length > 0 && 
+      tasks.length === 0 && 
+      !generateTasksMutation.isPending && 
+      !alreadyAttempted;
+    
+    if (shouldGenerateTasks) {
+      console.log('Auto-generating tasks for meeting - one-time attempt');
+      sessionStorage.setItem(taskGenerationAttemptKey, 'true');
+      
+      // Small delay to let summary finish first if it was also triggered
+      const timer = setTimeout(() => {
+        // Show a toast to let the user know we're extracting tasks
+        toast({
+          title: "Extracting Action Items",
+          description: "Please wait while we identify tasks from the meeting transcript...",
+        });
+        
+        generateTasksMutation.mutate();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [meetingId, meeting, transcription, tasks, generateTasksMutation]);
   
   // Handle WebSocket messages
   const handleWebSocketMessage = (message: any) => {
@@ -120,19 +266,9 @@ export default function LiveMeeting() {
     isMeetingActive ? meetingId : undefined, // Only pass meetingId if meeting is active
     {
       onMessage: handleWebSocketMessage,
-      // Only show connection notification for live meetings, not scheduled ones
-      onOpen: () => {
-        if (meeting?.status === 'live') {
-          // Use a simple toast with short duration for live connection
-          toast({
-            title: "Connected",
-            description: "Receiving live updates",
-            duration: 1500
-          });
-        }
-      },
-      // Don't show disconnection toast - we'll handle this with a UI indicator
-      // to avoid annoying popups
+      // Don't show connection notifications - we'll handle connection status with a UI indicator
+      onOpen: () => {},
+      // Don't show disconnection notifications
       onClose: () => {},
       // Only enable auto-reconnect for active meetings
       autoReconnect: isMeetingActive,
@@ -258,6 +394,7 @@ export default function LiveMeeting() {
             <TranscriptionPanel
               entries={transcription || []}
               isLoading={isLoadingTranscription}
+              meetingStatus={meeting?.status}
             />
 
             {/* Meeting Summary & Tasks */}

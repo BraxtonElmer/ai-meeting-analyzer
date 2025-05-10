@@ -40,6 +40,7 @@ export const meetings = pgTable("meetings", {
   agenda: json("agenda").$type<string[]>(),
   externalMeetingCode: text("external_meeting_code"),
   externalMeetingType: text("external_meeting_type"),
+  creatorId: integer("creator_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -54,6 +55,7 @@ export const insertMeetingSchema = createInsertSchema(meetings).pick({
   agenda: true,
   externalMeetingCode: true,
   externalMeetingType: true,
+  creatorId: true,
 });
 
 export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
@@ -68,11 +70,16 @@ export const meetingParticipants = pgTable("meeting_participants", {
 });
 
 // Define relations for meetings
-export const meetingsRelations = relations(meetings, ({ many }) => ({
+export const meetingsRelations = relations(meetings, ({ many, one }) => ({
   participants: many(meetingParticipants),
   transcriptionEntries: many(transcriptionEntries),
   tasks: many(tasks),
   chatMessages: many(chatMessages),
+  creator: one(users, {
+    fields: [meetings.creatorId],
+    references: [users.id],
+    relationName: "created_meetings"
+  }),
 }));
 
 // Define relations for users
@@ -80,6 +87,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   meetingParticipants: many(meetingParticipants),
   transcriptionEntries: many(transcriptionEntries),
   assignedTasks: many(tasks, { relationName: "assignee" }),
+  createdMeetings: many(meetings, { relationName: "created_meetings" }),
 }));
 
 // Define relations for meeting participants

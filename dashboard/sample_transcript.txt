@@ -1,0 +1,13 @@
+John Smith: Hi everyone, welcome to the project status meeting.
+Sarah Johnson: Thanks John. I've completed the design phase for the new feature.
+John Smith: That's great Sarah. What about the implementation timeline?
+Mike Wilson: I can start working on the backend next week.
+Sarah Johnson: And I'll handle the frontend components.
+John Smith: Perfect. Let's aim to have a demo ready by the end of the month.
+Emma Brown: I'll prepare the testing plan for this feature.
+John Smith: Thanks Emma. Any questions from anyone?
+Mike Wilson: When should we schedule the next review?
+John Smith: Let's do it next Friday.
+Emma Brown: That works for me.
+Sarah Johnson: Me too.
+John Smith: Great, let's wrap up then. Thanks everyone!

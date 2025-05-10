@@ -1,9 +1,11 @@
 import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 // Check if Gemini API key is available
 const apiKey = process.env.GEMINI_API_KEY;
 let genAI: GoogleGenerativeAI | null = null;
-let geminiModel: GenerativeModel | null = null;
+export let geminiModel: GenerativeModel | null = null;
 
 // Initialize the Google Generative AI client if API key is available
 if (apiKey) {
@@ -77,10 +79,17 @@ export async function extractTasks(transcript: string): Promise<any[]> {
   try {
     // Define the prompt for task extraction
     const prompt = `
-    You are an AI meeting assistant. Extract actionable tasks from the meeting transcript. 
-    For each task, identify the task description, the person assigned to it (if mentioned), and the due date (if mentioned).
+    You are an AI meeting assistant that specializes in extracting actionable tasks from meeting transcripts.
     
-    Respond only with a JSON object in the following format:
+    IMPORTANT INSTRUCTIONS:
+    - Carefully scan the transcript for any mention of tasks, assignments, responsibilities, or deadlines.
+    - Look for patterns like "X needs to do Y" or "X will handle Y" or "X's task is to do Y"
+    - Extract ANY statement that implies someone has been assigned work, even if it's phrased conversationally.
+    - Look for date indicators like "by Monday", "next week", "end of the month" and convert to YYYY-MM-DD format.
+    - If a date is not specific (like "next week"), make a reasonable estimate.
+    - If a full name is provided in the transcript, use the full name as the assignee.
+
+    Respond ONLY with a JSON object in the following format:
     {
       "tasks": [
         {
@@ -91,7 +100,7 @@ export async function extractTasks(transcript: string): Promise<any[]> {
       ]
     }
     
-    Extract tasks from the following meeting transcript:
+    Extract ALL possible tasks from the following meeting transcript:
     
     ${transcript}
     `;
@@ -106,10 +115,39 @@ export async function extractTasks(transcript: string): Promise<any[]> {
 
     // Parse the JSON response
     try {
-      const tasksObj = JSON.parse(tasksText);
+      // Clean up the response text to handle code blocks that Gemini might return
+      let cleanedResponse = tasksText;
+      
+      // Check if response is wrapped in markdown code blocks
+      if (tasksText.includes("```json")) {
+        const jsonMatch = tasksText.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch && jsonMatch[1]) {
+          cleanedResponse = jsonMatch[1].trim();
+        }
+      }
+      
+      console.log("Attempting to parse JSON task response:", cleanedResponse.substring(0, 300));
+      const tasksObj = JSON.parse(cleanedResponse);
       return tasksObj.tasks || [];
     } catch (parseError) {
       console.error("Error parsing Gemini task response as JSON:", parseError);
+      console.log("Raw response:", tasksText.substring(0, 300));
+      
+      // Try a more aggressive approach to extract JSON
+      try {
+        // Look for anything that might be JSON object with tasks array
+        const jsonPattern = /\{\s*"tasks"\s*:\s*\[\s*\{[\s\S]*?\}\s*\]\s*\}/g;
+        const jsonMatch = tasksText.match(jsonPattern);
+        
+        if (jsonMatch) {
+          console.log("Found tasks JSON pattern, attempting to parse:", jsonMatch[0].substring(0, 300));
+          const tasksObj = JSON.parse(jsonMatch[0]);
+          return tasksObj.tasks || [];
+        }
+      } catch (e) {
+        console.error("Failed second attempt to parse JSON:", e);
+      }
+      
       return [];
     }
   } catch (error) {
@@ -126,6 +164,7 @@ export async function answerMeetingQuestion(
   transcript: string,
   meetingTitle: string,
   question: string,
+  meetingStatus: string = 'live', // Add status parameter with default
 ): Promise<string> {
   // Check if Gemini model is initialized
   if (!geminiModel) {
@@ -133,12 +172,31 @@ export async function answerMeetingQuestion(
   }
 
   try {
-    // Define the prompt for answering questions
-    const prompt = `
+    // Define the prompt for answering questions with meeting status context
+    let prompt = `
     You are an AI meeting assistant. Answer questions about the meeting based on the transcript provided.
     Be concise but thorough. If the information isn't in the transcript, acknowledge that fact.
+    `;
     
+    // Add context about whether this is a past meeting or live meeting
+    if (meetingStatus === 'completed') {
+      prompt += `
+      This is a past meeting that has already been completed. The transcript has been imported into the system.
+      IMPORTANT: Respond in past tense when referring to this meeting since it has already happened.
+      For example, say "The speakers discussed..." rather than "The speakers are discussing..."
+      Make it clear in your response that you are analyzing a past transcript, not an ongoing conversation.
+      `;
+    } else {
+      prompt += `
+      This is an ongoing live meeting happening right now. 
+      IMPORTANT: Respond in present tense when referring to the meeting since it is currently in progress.
+      For example, say "The speakers are discussing..." rather than "The speakers discussed..."
+      `;
+    }
+    
+    prompt += `
     Meeting Title: ${meetingTitle}
+    Meeting Status: ${meetingStatus}
     
     Transcript:
     ${transcript}

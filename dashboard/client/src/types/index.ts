@@ -18,6 +18,7 @@ export interface Meeting {
   participants: User[];
   agenda?: string[];
   summary?: string;
+  creatorId?: number | null;
 }
 
 export interface MeetingDetails extends Meeting {

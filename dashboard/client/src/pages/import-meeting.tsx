@@ -14,16 +14,12 @@ import { useToast } from '@/hooks/use-toast';
 
 // Form schema with validation for Google Meet URL
 const formSchema = z.object({
-  meetingUrl: z.string()
-    .url("Please enter a valid URL")
-    .refine(url => {
-      const googleMeetPattern = /meet\.google\.com/i;
-      return googleMeetPattern.test(url);
-    }, "URL must be a Google Meet link"),
+  meetingUrl: z.string().optional(),
   title: z.string()
     .min(3, "Title must be at least 3 characters")
     .max(100, "Title cannot exceed 100 characters"),
   description: z.string().optional(),
+  transcriptFile: z.instanceof(File).optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -59,7 +55,7 @@ export default function ImportMeeting() {
         title: "Meeting imported successfully!",
         description: "Redirecting to the live meeting page...",
       });
-      
+
       // Small delay to allow the toast to be shown
       setTimeout(() => {
         navigate(`/live-meeting?id=${data.id}`);
@@ -74,10 +70,56 @@ export default function ImportMeeting() {
     },
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Handle form submission
-  const onSubmit = (values: FormValues) => {
-    setIsLoading(true);
-    createMeetingMutation.mutate(values);
+  const onSubmit = async (data: FormValues) => {
+    try {
+      setIsSubmitting(true);
+
+      let transcriptContent = '';
+      if (data.transcriptFile) {
+        const fileContent = await data.transcriptFile.text();
+        transcriptContent = fileContent;
+      }
+
+      const response = await fetch('/api/meetings/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          meetingUrl: data.meetingUrl,
+          title: data.title,
+          description: data.description,
+          transcriptContent: transcriptContent,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      toast({
+        title: "Meeting imported successfully!",
+        description: "Redirecting to the live meeting page...",
+      });
+
+      setTimeout(() => {
+        navigate(`/live-meeting?id=${result.id}`);
+      }, 1000);
+
+    } catch (error: any) {
+      toast({
+        title: "Failed to import meeting",
+        description: error.message || "An error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -100,7 +142,7 @@ export default function ImportMeeting() {
                     name="meetingUrl"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Google Meet URL</FormLabel>
+                        <FormLabel>Google Meet URL (Optional)</FormLabel>
                         <FormControl>
                           <Input 
                             placeholder="https://meet.google.com/xyz-abcd-123" 
@@ -110,6 +152,33 @@ export default function ImportMeeting() {
                         </FormControl>
                         <FormDescription>
                           Enter the full URL of the Google Meet you want to join
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="transcriptFile"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Transcript File (Optional)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="file" 
+                            accept=".txt,.doc,.docx"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                field.onChange(file);
+                              }
+                            }}
+                            className="w-full"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Upload a transcript file to import past meeting
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -169,9 +238,9 @@ export default function ImportMeeting() {
                     <Button 
                       type="submit" 
                       className="bg-primary text-white"
-                      disabled={isLoading || createMeetingMutation.isPending}
+                      disabled={isLoading || createMeetingMutation.isPending || isSubmitting}
                     >
-                      {(isLoading || createMeetingMutation.isPending) ? (
+                      {(isLoading || createMeetingMutation.isPending || isSubmitting) ? (
                         <>
                           <span className="mr-2">
                             <span className="animate-spin inline-block h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></span>

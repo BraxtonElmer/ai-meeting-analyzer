@@ -8,12 +8,14 @@ interface TranscriptionPanelProps {
   entries: TranscriptionEntry[];
   isLoading?: boolean;
   className?: string;
+  meetingStatus?: string;
 }
 
 export function TranscriptionPanel({
   entries,
   isLoading = false,
-  className
+  className,
+  meetingStatus = 'completed'
 }: TranscriptionPanelProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +37,9 @@ export function TranscriptionPanel({
   return (
     <Card className={cn('overflow-hidden flex flex-col', className)}>
       <CardHeader className="border-b p-4 flex flex-row justify-between items-center bg-white sticky top-0 z-10">
-        <CardTitle className="text-base">Live Transcription</CardTitle>
+        <CardTitle className="text-base">
+          {meetingStatus === 'live' ? 'Live Transcription' : 'Meeting Transcript'}
+        </CardTitle>
         <div className="flex items-center space-x-3">
           <Button variant="ghost" size="sm" className="text-primary hover:text-primary-dark">
             <span className="material-icons text-sm mr-1 align-text-bottom">cloud_download</span>
@@ -72,14 +76,17 @@ export function TranscriptionPanel({
                 <div
                   className={cn(
                     'w-10 h-10 rounded-full flex items-center justify-center font-medium mr-3 flex-shrink-0',
-                    entry.user.avatarColor
+                    entry.user?.avatarColor || 'bg-gray-200'
                   )}
                 >
-                  {entry.user.avatarInitials}
+                  {entry.user?.avatarInitials || (entry.user?.fullName ? entry.user.fullName[0] : 'U')}
                 </div>
                 <div>
                   <div className="flex items-baseline">
-                    <span className="font-medium">{entry.user.fullName}</span>
+                    <span className="font-medium">
+                      {/* Display the speaker name appropriately for both live meetings and imported transcripts */}
+                      {entry.user?.fullName || 'Unknown Speaker'}
+                    </span>
                     <span className="text-gray-400 text-xs ml-2">
                       {formatTime(entry.timestamp)}
                     </span>

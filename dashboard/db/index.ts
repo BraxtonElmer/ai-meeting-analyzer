@@ -3,9 +3,10 @@ import { drizzle } from 'drizzle-orm/neon-serverless';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import ws from "ws";
 import * as schema from "@shared/schema";
-import "dotenv/config";
 // Import migrations directly since they're in the same file
 import { getTableInfo, tryToInitializeDb } from './migrations';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 // This is the correct way neon config - DO NOT change this
 neonConfig.webSocketConstructor = ws;
