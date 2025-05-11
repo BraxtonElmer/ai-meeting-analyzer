@@ -1,17 +1,94 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRoute } from 'wouter';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { TranscriptionPanel } from '@/components/meetings/transcription-panel';
-import { SummaryCard } from '@/components/meetings/summary-card';
-import { TaskCard } from '@/components/meetings/task-card';
 import { MeetingInfo } from '@/components/meetings/meeting-info';
-import { ChatInterface } from '@/components/chat/chat-interface';
-import { Meeting, TranscriptionEntry, Task, ChatMessage, MeetingDetails } from '@/types';
+import { Meeting, TranscriptionEntry, User } from '@/types';
 import { useWebSocket } from '@/hooks/use-websocket';
-import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+
+interface MeetingData {
+  id: number;
+  status: 'live' | 'scheduled' | 'completed';
+  title: string;
+  startTime: string;
+  participants: User[];
+  duration: string;
+  date: string;
+}
+
+// Dummy participant data
+const dummyParticipants: User[] = [
+  {
+    id: 1,
+    username: 'john.doe',
+    fullName: 'John Doe',
+    email: 'john.doe@company.com',
+    avatarInitials: 'JD',
+    avatarColor: '#4F46E5'
+  },
+  {
+    id: 2,
+    username: 'jane.smith',
+    fullName: 'Jane Smith',
+    email: 'jane.smith@company.com',
+    avatarInitials: 'JS',
+    avatarColor: '#10B981'
+  },
+  {
+    id: 3,
+    username: 'mike.wilson',
+    fullName: 'Mike Wilson',
+    email: 'mike.wilson@company.com',
+    avatarInitials: 'MW',
+    avatarColor: '#F59E0B'
+  },
+  {
+    id: 4,
+    username: 'sarah.johnson',
+    fullName: 'Sarah Johnson',
+    email: 'sarah.johnson@company.com',
+    avatarInitials: 'SJ',
+    avatarColor: '#EF4444'
+  },
+  {
+    id: 5,
+    username: 'david.brown',
+    fullName: 'David Brown',
+    email: 'david.brown@company.com',
+    avatarInitials: 'DB',
+    avatarColor: '#8B5CF6'
+  }
+];
+
+// Participant card component
+const ParticipantCard = ({ participant }: { participant: User }) => (
+  <div className="flex items-center space-x-3 p-3 bg-white rounded-lg shadow-sm">
+    <div className="flex-shrink-0">
+      <div 
+        className="w-10 h-10 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: `${participant.avatarColor}20` }}
+      >
+        <span 
+          className="font-medium"
+          style={{ color: participant.avatarColor }}
+        >
+          {participant.avatarInitials}
+        </span>
+      </div>
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-medium text-gray-900 truncate">
+        {participant.fullName}
+      </p>
+      <p className="text-sm text-gray-500 truncate">
+        {participant.email}
+      </p>
+    </div>
+  </div>
+);
 
 export default function LiveMeeting() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -20,19 +97,25 @@ export default function LiveMeeting() {
   
   // Get meeting ID from URL parameters if available
   const [matchTranscript, paramsTranscript] = useRoute<{ id: string }>('/meetings/:id/transcript');
-  const [matchSummary, paramsSummary] = useRoute<{ id: string }>('/meetings/:id/summary');
-  const [matchTasks, paramsTasks] = useRoute<{ id: string }>('/meetings/:id/tasks');
   
   // Extract the meeting ID from parameters or default to 1
-  const meetingId = parseInt(
-    paramsTranscript?.id || paramsSummary?.id || paramsTasks?.id || '1'
-  );
+  const meetingId = parseInt(paramsTranscript?.id || '1');
 
   // Fetch current meeting data with stability measures
-  const { data: meeting, isLoading: isLoadingMeeting } = useQuery({
+  const { data: meeting, isLoading: isLoadingMeeting } = useQuery<MeetingData>({
     queryKey: [`/api/meetings/${meetingId}`],
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: false,
+    // Add dummy data for demonstration
+    initialData: {
+      id: meetingId,
+      status: 'live',
+      title: 'Project Kickoff Meeting',
+      startTime: new Date().toISOString(),
+      participants: dummyParticipants,
+      duration: '60',
+      date: new Date().toISOString()
+    }
   });
 
   // Fetch transcription with stable results
@@ -42,166 +125,6 @@ export default function LiveMeeting() {
     refetchOnWindowFocus: false,
   });
 
-  // Fetch tasks with stable results
-  const { data: tasks = [], isLoading: isLoadingTasks } = useQuery<Task[]>({
-    queryKey: [`/api/meetings/${meetingId}/tasks`],
-    staleTime: 10000,
-    refetchOnWindowFocus: false,
-  });
-
-  // Fetch chat messages with stable results
-  const { data: chatMessages = [], isLoading: isLoadingChat } = useQuery<ChatMessage[]>({
-    queryKey: [`/api/meetings/${meetingId}/chat`],
-    staleTime: 10000,
-    refetchOnWindowFocus: false,
-  });
-  
-  // Add a mutation to fetch summary if needed
-  const generateSummaryMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch(`/api/meetings/${meetingId}/summary`);
-      if (!response.ok) {
-        throw new Error('Failed to generate summary');
-      }
-      return response.json();
-    },
-    onSuccess: (data) => {
-      // Update the meeting data with the new summary
-      queryClient.setQueryData(
-        [`/api/meetings/${meetingId}`],
-        (old: MeetingDetails | undefined) => {
-          if (!old) return old;
-          return { ...old, summary: data.content };
-        }
-      );
-      
-      // Show success toast
-      toast({
-        title: "Summary Generated",
-        description: "The AI meeting summary has been created successfully.",
-      });
-    },
-    onError: (error) => {
-      console.error('Error generating summary:', error);
-      
-      // Show error toast
-      toast({
-        title: "Summary Generation Failed",
-        description: "We couldn't generate a meeting summary. Please try again later.",
-        variant: "destructive"
-      });
-    }
-  });
-  
-  // Add a mutation to generate tasks from meeting transcript
-  const generateTasksMutation = useMutation({
-    mutationFn: async () => {
-      console.log(`Sending task extraction request for meeting ${meetingId}`);
-      
-      // Use the dedicated API endpoint for task extraction
-      const response = await fetch(`/api/meetings/${meetingId}/extract-tasks`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Task extraction failed with status:", response.status, errorText);
-        throw new Error(`Failed to generate tasks: ${response.status} ${errorText}`);
-      }
-      
-      // After tasks are generated, fetch the updated task list
-      return await queryClient.fetchQuery<Task[]>({
-        queryKey: [`/api/meetings/${meetingId}/tasks`],
-      });
-    },
-    onSuccess: (data: Task[]) => {
-      // Show success toast
-      if (data && data.length > 0) {
-        toast({
-          title: "Tasks Extracted",
-          description: `Successfully identified ${data.length} action items from the meeting.`,
-        });
-      } else {
-        toast({
-          title: "No Tasks Found",
-          description: "No action items were identified in the meeting transcript.",
-        });
-      }
-    },
-    onError: (error) => {
-      console.error('Error extracting tasks:', error);
-      
-      // Show error toast
-      toast({
-        title: "Task Extraction Failed",
-        description: "We couldn't extract tasks from the meeting transcript. Please try again later.",
-        variant: "destructive"
-      });
-    }
-  });
-  
-  // Effect to check and generate summary if needed once per page load
-  useEffect(() => {
-    // Store attempted state in session storage to persist across refreshes
-    const summaryGenerationAttemptKey = `summary-gen-attempted-${meetingId}`;
-    const alreadyAttempted = sessionStorage.getItem(summaryGenerationAttemptKey) === 'true';
-    
-    // Only generate summary if meeting is loaded, has no summary, and has transcriptions
-    if (meeting && 
-        !meeting.summary && 
-        transcription.length > 0 && 
-        !generateSummaryMutation.isPending && 
-        !alreadyAttempted) {
-      
-      console.log('Auto-generating summary for imported meeting - one-time attempt');
-      sessionStorage.setItem(summaryGenerationAttemptKey, 'true');
-      
-      // Show a toast to let the user know we're generating a summary
-      toast({
-        title: "Generating AI Summary",
-        description: "Please wait while we analyze the meeting transcript...",
-      });
-      
-      generateSummaryMutation.mutate();
-    }
-  }, [meetingId, meeting, transcription, generateSummaryMutation, toast]);
-  
-  // Effect to check and generate tasks if needed once per page load
-  useEffect(() => {
-    // Store attempted state in session storage to persist across refreshes
-    const taskGenerationAttemptKey = `task-gen-attempted-${meetingId}`;
-    const alreadyAttempted = sessionStorage.getItem(taskGenerationAttemptKey) === 'true';
-    
-    // Check if we have transcripts but no tasks and haven't tried yet
-    const shouldGenerateTasks = 
-      meeting && 
-      transcription.length > 0 && 
-      tasks.length === 0 && 
-      !generateTasksMutation.isPending && 
-      !alreadyAttempted;
-    
-    if (shouldGenerateTasks) {
-      console.log('Auto-generating tasks for meeting - one-time attempt');
-      sessionStorage.setItem(taskGenerationAttemptKey, 'true');
-      
-      // Small delay to let summary finish first if it was also triggered
-      const timer = setTimeout(() => {
-        // Show a toast to let the user know we're extracting tasks
-        toast({
-          title: "Extracting Action Items",
-          description: "Please wait while we identify tasks from the meeting transcript...",
-        });
-        
-        generateTasksMutation.mutate();
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [meetingId, meeting, transcription, tasks, generateTasksMutation]);
-  
   // Handle WebSocket messages
   const handleWebSocketMessage = (message: any) => {
     switch (message.type) {
@@ -210,42 +133,6 @@ export default function LiveMeeting() {
         queryClient.setQueryData(
           [`/api/meetings/${meetingId}/transcription`],
           (old: TranscriptionEntry[] = []) => [...old, message.data.entry]
-        );
-        break;
-      case 'summary':
-        // Update meeting summary
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}`],
-          (old: Meeting) => ({ ...old, summary: message.data.summary })
-        );
-        break;
-      case 'task':
-        // Handle new task
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}/tasks`],
-          (old: Task[] = []) => [...old, message.data.task]
-        );
-        break;
-      case 'task_update':
-        // Handle task updates, like completion status changes
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}/tasks`],
-          (old: Task[] = []) => {
-            // Find and replace the updated task in the array
-            const updatedTask = message.data.task;
-            return old.map(task => 
-              task.id === updatedTask.id ? updatedTask : task
-            );
-          }
-        );
-        // Also update the general tasks list if it exists in cache
-        queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
-        break;
-      case 'chat':
-        // Update chat messages
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}/chat`],
-          (old: ChatMessage[] = []) => [...old, message.data.message]
         );
         break;
       case 'meeting_update':
@@ -263,73 +150,20 @@ export default function LiveMeeting() {
   
   // Only attempt WebSocket connection if the meeting is active
   const { isConnected } = useWebSocket(
-    isMeetingActive ? meetingId : undefined, // Only pass meetingId if meeting is active
+    isMeetingActive ? meetingId : undefined,
     {
       onMessage: handleWebSocketMessage,
-      // Don't show connection notifications - we'll handle connection status with a UI indicator
       onOpen: () => {},
-      // Don't show disconnection notifications
       onClose: () => {},
-      // Only enable auto-reconnect for active meetings
       autoReconnect: isMeetingActive,
       maxReconnectAttempts: 3
     }
   );
 
-  // Task update mutation
-  const taskUpdateMutation = useMutation({
-    mutationFn: async ({ 
-      taskId, 
-      updates 
-    }: { 
-      taskId: number; 
-      updates: Partial<Task>; 
-    }) => {
-      const response = await apiRequest(
-        'PATCH', 
-        `/api/tasks/${taskId}`,
-        updates
-      );
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/meetings/${meetingId}/tasks`] });
-    },
-  });
-
-  // Chat message mutation
-  const sendChatMutation = useMutation({
-    mutationFn: async (message: string) => {
-      const response = await apiRequest(
-        'POST',
-        `/api/meetings/${meetingId}/chat`,
-        { content: message }
-      );
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/meetings/${meetingId}/chat`] });
-    },
-  });
-
-  // Handle task updates
-  const handleTaskUpdate = (taskId: number, updates: Partial<Task>) => {
-    taskUpdateMutation.mutate({ taskId, updates });
-  };
-
-  // Handle sending chat messages
-  const handleSendMessage = (message: string) => {
-    sendChatMutation.mutate(message);
-  };
-
   // Determine the correct page title based on the current route
   const getPageTitle = () => {
     if (matchTranscript) {
       return "Meeting Transcript";
-    } else if (matchSummary) {
-      return "Meeting Summary";
-    } else if (matchTasks) {
-      return "Meeting Tasks";
     } else {
       return "Live Meeting";
     }
@@ -387,7 +221,7 @@ export default function LiveMeeting() {
           </div>
         </div>
 
-        {/* Transcription and Chat Interface */}
+        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-8 gap-6">
           {/* Left Side (Transcription) */}
           <div className="lg:col-span-5">
@@ -396,45 +230,26 @@ export default function LiveMeeting() {
               isLoading={isLoadingTranscription}
               meetingStatus={meeting?.status}
             />
-
-            {/* Meeting Summary & Tasks */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <SummaryCard
-                summary={meeting?.summary || ''}
-                isLoading={isLoadingMeeting}
-                onEditClick={() => {
-                  toast({
-                    title: "Edit Summary",
-                    description: "Editing summary functionality coming soon!",
-                  });
-                }}
-              />
-
-              <TaskCard
-                tasks={tasks || []}
-                isLoading={isLoadingTasks}
-                onTaskUpdate={handleTaskUpdate}
-                onAddTask={() => {
-                  toast({
-                    title: "Add Task",
-                    description: "Adding task functionality coming soon!",
-                  });
-                }}
-              />
-            </div>
           </div>
 
-          {/* Right Side (Chat & Meeting Info) */}
-          <div className="lg:col-span-3">
-            <ChatInterface
-              meetingId={meetingId}
-              messages={chatMessages || []}
-              isLoading={isLoadingChat}
-              onMessageSend={handleSendMessage}
-            />
-
-            <div className="mt-6">
-              {meeting && <MeetingInfo meeting={meeting} />}
+          {/* Right Side (Meeting Info & Participants) */}
+          <div className="lg:col-span-3 space-y-6">
+            {meeting && <MeetingInfo meeting={meeting} />}
+            
+            {/* Participants Section */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Participants</h3>
+                <span className="text-sm text-gray-500">
+                  {meeting?.participants?.length || 0} people
+                </span>
+              </div>
+              
+              <div className="space-y-3">
+                {meeting?.participants?.map((participant) => (
+                  <ParticipantCard key={participant.id} participant={participant} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
