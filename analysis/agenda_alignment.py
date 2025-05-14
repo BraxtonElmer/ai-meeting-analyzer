@@ -41,10 +41,10 @@ def parse_speakers(transcript_text):
 
 # Main function to analyze a meeting
 def analyze_meeting(meeting_id, transcript_text):
-    # Get agenda items from database
+    # Get agenda items with end time from database
     with engine.connect() as conn:
         agenda_query = text("""
-            SELECT a.topic
+            SELECT a.topic, a.end_time
             FROM agenda a 
             WHERE a.meeting_id = :meeting_id
         """)
@@ -58,6 +58,8 @@ def analyze_meeting(meeting_id, transcript_text):
 
     for _, item in agenda_items.iterrows():
         topic = item["topic"]
+        end_time = item.get("end_time", None)  # Get end time from DB
+
         topic_embedding = model.encode(topic, convert_to_tensor=True)
 
         # Compute topic drift
@@ -76,6 +78,7 @@ def analyze_meeting(meeting_id, transcript_text):
         results.append({
             "topic": topic,
             "topic_drift": topic_drift,
+            "end_time": end_time,
             "speaker_drift": speaker_drift
         })
 
@@ -87,11 +90,10 @@ def analyze_meeting(meeting_id, transcript_text):
         "topics": results
     }
 
+# Main execution
 def main():
     try:
-        # Process each meeting
         with engine.connect() as conn:
-            # Get all meetings with their transcripts
             meetings_query = text("""
                 SELECT DISTINCT t.meeting_id, t.transcript0, t.transcript1
                 FROM transcripts t
@@ -101,7 +103,7 @@ def main():
 
         for _, row in tqdm(meetings_df.iterrows(), total=len(meetings_df)):
             meeting_id = row['meeting_id']
-            # Combine transcript0 and transcript1
+            # Combine transcripts
             transcript = ""
             if pd.notna(row['transcript0']):
                 transcript += row['transcript0'] + "\n"
