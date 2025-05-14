@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-
+import testData from "./test.json";
 // Define interfaces for report data types
 interface SentimentData {
   overallSentiment: number;
@@ -15,6 +15,13 @@ interface TopicData {
   plannedTopics: string[];
   topicCoverage: Array<{ name: string; planned: number; actual: number; drift: number }>;
   unexpectedTopics: string[];
+  speakerContributions: Array<{ name: string; contributions: number }>;
+  speakerDrift: Array<{
+    time: string;
+    speakers: {
+      [key: string]: number; // drift score for each speaker at this time
+    };
+  }>;
 }
 
 interface ToneData {
@@ -43,6 +50,19 @@ interface ParticipantData {
     low: string[];
   };
 }
+
+// Add new interface for transition data
+interface TransitionData {
+  meeting_id: number;
+  meeting_title: string;
+  transitions: Array<{
+    from_speaker: string;
+    to_speaker: string;
+    transition_smoothness: number;
+    sentiment: string;
+  }>;
+}
+
 import {
   Card,
   CardContent,
@@ -61,6 +81,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Dices, AlertCircle, TrendingUp, Cpu, Users, BarChart3, PieChart, LineChart } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, LineChart as RechartsLineChart, Line, CartesianGrid, Legend, PieChart as RechartsPieChart, Pie, Cell } from "recharts";
 import { cn } from "@/lib/utils";
+
+// Define interface for meeting data 
+interface Meeting {
+  id: number;
+  title: string;
+  status: string;
+  description?: string;
+  start_time?: string;
+  end_time?: string;
+  summary?: string;
+  agenda?: string[];
+  external_meeting_code?: string;
+  external_meeting_type?: string;
+  created_at?: string;
+}
 
 // Sentiment Analysis Card
 const SentimentAnalysisCard = ({ meetingId }: { meetingId: string }) => {
@@ -83,20 +118,12 @@ const SentimentAnalysisCard = ({ meetingId }: { meetingId: string }) => {
     </Card>
   );
 
-  // Fallback data if the API call fails
-  const data = sentimentData || {
-    overallSentiment: 0.65,
-    sentimentOverTime: [
-      { time: '0:00', score: 0.7 },
-      { time: '5:00', score: 0.8 },
-      { time: '10:00', score: 0.6 },
-      { time: '15:00', score: 0.5 },
-      { time: '20:00', score: 0.4 },
-      { time: '25:00', score: 0.7 },
-      { time: '30:00', score: 0.8 },
-    ],
-    topPositiveTopics: ['Product features', 'Team collaboration', 'Customer feedback'],
-    topNegativeTopics: ['Technical limitations', 'Budget constraints'],
+  // Use test data if API data is not available
+  const data: SentimentData = sentimentData || {
+    overallSentiment: testData.overallSentiment,
+    sentimentOverTime: testData.sentimentOverTime,
+    topPositiveTopics: testData.topPositiveTopics,
+    topNegativeTopics: testData.topNegativeTopics
   };
 
   // Color based on sentiment score
@@ -105,9 +132,6 @@ const SentimentAnalysisCard = ({ meetingId }: { meetingId: string }) => {
     if (score >= 0.4) return 'text-yellow-500';
     return 'text-red-500';
   };
-
-  // Data for sentiment chart
-  const chartData = data.sentimentOverTime;
 
   return (
     <Card className="max-w-full overflow-hidden">
@@ -127,34 +151,11 @@ const SentimentAnalysisCard = ({ meetingId }: { meetingId: string }) => {
           </div>
         </div>
 
-        <div className="h-52">
-          <ResponsiveContainer width="100%" height="100%">
-            <RechartsLineChart
-              data={chartData}
-              margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis domain={[0, 1]} />
-              <Tooltip 
-                formatter={(value: number) => [`${Math.round(value * 100)}%`, 'Sentiment']} 
-                labelFormatter={(label) => `Time: ${label}`}
-              />
-              <Line
-                type="monotone"
-                dataKey="score"
-                stroke="#8884d8"
-                activeDot={{ r: 8 }}
-              />
-            </RechartsLineChart>
-          </ResponsiveContainer>
-        </div>
-
         <div className="mt-6 grid grid-cols-2 gap-4">
           <div>
             <h4 className="mb-2 text-sm font-medium text-green-500">Top Positive Topics</h4>
             <ul className="space-y-1">
-              {data.topPositiveTopics.map((topic, i) => (
+              {data.topPositiveTopics.map((topic: string, i: number) => (
                 <li key={i} className="text-sm">{topic}</li>
               ))}
             </ul>
@@ -162,7 +163,7 @@ const SentimentAnalysisCard = ({ meetingId }: { meetingId: string }) => {
           <div>
             <h4 className="mb-2 text-sm font-medium text-red-500">Top Negative Topics</h4>
             <ul className="space-y-1">
-              {data.topNegativeTopics.map((topic, i) => (
+              {data.topNegativeTopics.map((topic: string, i: number) => (
                 <li key={i} className="text-sm">{topic}</li>
               ))}
             </ul>
@@ -194,328 +195,271 @@ const TopicDriftCard = ({ meetingId }: { meetingId: string }) => {
     </Card>
   );
 
-  // Fallback data if the API call fails
   const data = topicData || {
-    topicDriftScore: 0.35,
-    plannedTopics: ['Budget Review', 'Product Roadmap', 'Team Structure', 'Client Feedback'],
-    topicCoverage: [
-      { name: 'Budget Review', planned: 25, actual: 15, drift: 0.4 },
-      { name: 'Product Roadmap', planned: 30, actual: 35, drift: 0.17 },
-      { name: 'Team Structure', planned: 20, actual: 10, drift: 0.5 },
-      { name: 'Client Feedback', planned: 25, actual: 20, drift: 0.2 },
-      { name: 'Off-topic', planned: 0, actual: 20, drift: 1.0 },
+    topicDriftScore: testData.topicDriftScore,
+    plannedTopics: testData.plannedTopics,
+    topicCoverage: testData.topicCoverage,
+    speakerContributions: [
+      { name: "John", contributions: 35 },
+      { name: "Alice", contributions: 25 },
+      { name: "Bob", contributions: 20 },
+      { name: "Carol", contributions: 15 },
+      { name: "Dave", contributions: 5 }
     ],
-    unexpectedTopics: ['Technical Issues', 'Office Layout', 'Social Events'],
+    speakerDrift: [
+      { time: "0:00", speakers: { "John": 0.1, "Alice": 0.2, "Bob": 0.15, "Carol": 0.05, "Dave": 0.1 } },
+      { time: "5:00", speakers: { "John": 0.3, "Alice": 0.25, "Bob": 0.2, "Carol": 0.15, "Dave": 0.1 } },
+      { time: "10:00", speakers: { "John": 0.4, "Alice": 0.35, "Bob": 0.3, "Carol": 0.25, "Dave": 0.2 } },
+      { time: "15:00", speakers: { "John": 0.35, "Alice": 0.3, "Bob": 0.25, "Carol": 0.2, "Dave": 0.15 } },
+      { time: "20:00", speakers: { "John": 0.25, "Alice": 0.2, "Bob": 0.15, "Carol": 0.1, "Dave": 0.05 } }
+    ]
   };
 
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+
   return (
-    <Card className="max-w-full overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" /> Topic Drift Analysis
-        </CardTitle>
-        <CardDescription>How conversations deviated from planned topics</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-6 flex items-center justify-center gap-4">
-          <div className="text-center">
-            <div className="text-sm font-medium text-muted-foreground">Topic Drift Score</div>
-            <div className={`text-3xl font-bold ${data.topicDriftScore > 0.5 ? 'text-red-500' : 'text-green-500'}`}>
-              {Math.round(data.topicDriftScore * 100)}%
+    <div className="space-y-6">
+      <Card className="max-w-full overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" /> Topic Drift Analysis
+          </CardTitle>
+          <CardDescription>How conversations deviated from planned topics</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-6 flex items-center justify-center gap-4">
+            <div className="text-center">
+              <div className="text-sm font-medium text-muted-foreground">Overall Topic Drift Score</div>
+              <div className={`text-3xl font-bold ${data.topicDriftScore > 0.5 ? 'text-red-500' : 'text-green-500'}`}>
+                {Math.round(data.topicDriftScore * 100)}%
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="h-52">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              width={500}
-              height={300}
-              data={data.topicCoverage}
-              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="planned" fill="#8884d8" name="Planned %" />
-              <Bar dataKey="actual" fill="#82ca9d" name="Actual %" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {data.unexpectedTopics.length > 0 && (
-          <div className="mt-6">
-            <h4 className="mb-2 text-sm font-medium text-orange-500">Unexpected Topics Discussed</h4>
-            <ul className="space-y-1">
-              {data.unexpectedTopics.map((topic, i) => (
-                <li key={i} className="text-sm">{topic}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-};
-
-// Tone Analysis Card
-const ToneAnalysisCard = ({ meetingId }: { meetingId: string }) => {
-  const { data: toneData, isLoading } = useQuery<ToneData>({
-    queryKey: ['/api/reports/tone', meetingId],
-    enabled: !!meetingId,
-  });
-
-  if (isLoading) return (
-    <Card className="max-w-full overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Cpu className="h-5 w-5" /> Communication Tone
-        </CardTitle>
-        <CardDescription>Analysis of speaking tones during the meeting</CardDescription>
-      </CardHeader>
-      <CardContent className="h-64 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </CardContent>
-    </Card>
-  );
-
-  // Fallback data if the API call fails
-  const data = toneData || {
-    dominantTones: ['Analytical', 'Confident', 'Tentative'],
-    toneBreakdown: [
-      { tone: 'Analytical', percentage: 40 },
-      { tone: 'Confident', percentage: 25 },
-      { tone: 'Tentative', percentage: 15 },
-      { tone: 'Casual', percentage: 10 },
-      { tone: 'Formal', percentage: 10 },
-    ],
-    participants: [
-      { name: 'John', tones: { analytical: 60, confident: 20, tentative: 10, casual: 5, formal: 5 } },
-      { name: 'Sarah', tones: { analytical: 30, confident: 40, tentative: 10, casual: 10, formal: 10 } },
-      { name: 'Alex', tones: { analytical: 20, confident: 15, tentative: 40, casual: 15, formal: 10 } },
-    ],
-  };
-
-  // Colors for the pie chart
-  const COLORS = ['#8884d8', '#83a6ed', '#8dd1e1', '#82ca9d', '#a4de6c'];
-
-  return (
-    <Card className="max-w-full overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Cpu className="h-5 w-5" /> Communication Tone
-        </CardTitle>
-        <CardDescription>Analysis of speaking tones during the meeting</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-4">
-          <h4 className="mb-2 text-sm font-medium">Dominant Tones</h4>
-          <div className="flex flex-wrap gap-2">
-            {data.dominantTones.map((tone, i) => (
-              <span key={i} className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary-foreground">
-                {tone}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="h-40">
+          {/* Speaker Drift Over Time Chart */}
+          <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
-              <RechartsPieChart>
-                <Pie
-                  data={data.toneBreakdown}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={60}
-                  fill="#8884d8"
-                  dataKey="percentage"
-                  nameKey="tone"
-                >
-                  {data.toneBreakdown.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => `${value}%`} />
-              </RechartsPieChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart outerRadius={60} width={500} height={300} data={[
-                { subject: 'Analytical', A: data.participants[0].tones.analytical, B: data.participants[1].tones.analytical, C: data.participants[2].tones.analytical },
-                { subject: 'Confident', A: data.participants[0].tones.confident, B: data.participants[1].tones.confident, C: data.participants[2].tones.confident },
-                { subject: 'Tentative', A: data.participants[0].tones.tentative, B: data.participants[1].tones.tentative, C: data.participants[2].tones.tentative },
-                { subject: 'Casual', A: data.participants[0].tones.casual, B: data.participants[1].tones.casual, C: data.participants[2].tones.casual },
-                { subject: 'Formal', A: data.participants[0].tones.formal, B: data.participants[1].tones.formal, C: data.participants[2].tones.formal },
-              ]}>
-                <PolarGrid />
-                <PolarAngleAxis dataKey="subject" />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                <Radar name={data.participants[0].name} dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-                <Radar name={data.participants[1].name} dataKey="B" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.6} />
-                <Radar name={data.participants[2].name} dataKey="C" stroke="#ffc658" fill="#ffc658" fillOpacity={0.6} />
+              <RechartsLineChart
+                data={data.speakerDrift}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis domain={[0, 1]} />
+                <Tooltip 
+                  formatter={(value: number) => [`${Math.round(value * 100)}%`, 'Drift']}
+                  labelFormatter={(label) => `Time: ${label}`}
+                />
                 <Legend />
-              </RadarChart>
+                {Object.keys(data.speakerDrift[0].speakers).map((speaker, index) => (
+                  <Line
+                    key={speaker}
+                    type="monotone"
+                    dataKey={`speakers.${speaker}`}
+                    name={speaker}
+                    stroke={COLORS[index % COLORS.length]}
+                    activeDot={{ r: 8 }}
+                  />
+                ))}
+              </RechartsLineChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
+        </CardContent>
+      </Card>
 
-// Participant Analysis Card
-const ParticipantAnalysisCard = ({ meetingId }: { meetingId: string }) => {
-  const { data: participantData, isLoading } = useQuery<ParticipantData>({
-    queryKey: ['/api/reports/participants', meetingId],
-    enabled: !!meetingId,
-  });
-
-  if (isLoading) return (
-    <Card className="max-w-full overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" /> Participant Analysis
-        </CardTitle>
-        <CardDescription>Insights on participant engagement and interaction</CardDescription>
-      </CardHeader>
-      <CardContent className="h-64 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </CardContent>
-    </Card>
-  );
-
-  // Fallback data if the API call fails
-  const data = participantData || {
-    participantCount: 4,
-    speakingDistribution: [
-      { name: 'John', speakingTime: 42 },
-      { name: 'Sarah', speakingTime: 28 },
-      { name: 'Alex', speakingTime: 18 },
-      { name: 'Emily', speakingTime: 12 },
-    ],
-    interactionStats: [
-      { name: 'Questions Asked', count: 15 },
-      { name: 'Interruptions', count: 8 },
-      { name: 'Cross-talk Instances', count: 6 },
-      { name: 'Silent Periods', count: 3 },
-    ],
-    engagement: {
-      high: ['John', 'Sarah'],
-      medium: ['Emily'],
-      low: ['Alex'],
-    },
-  };
-
-  // Colors for pie chart
-  const COLORS = ['#8884d8', '#83a6ed', '#8dd1e1', '#82ca9d'];
-
-  return (
-    <Card className="max-w-full overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" /> Participant Analysis
-        </CardTitle>
-        <CardDescription>Insights on participant engagement and interaction</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-4 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-sm font-medium text-muted-foreground">Participants</div>
-            <div className="text-3xl font-bold">{data.participantCount}</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <h4 className="mb-2 text-sm font-medium">Speaking Distribution</h4>
-            <div className="h-40">
+      {/* Agenda Distribution and Speaker Contributions Cards */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Agenda Distribution Card */}
+        <Card className="max-w-full overflow-hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PieChart className="h-5 w-5" /> Agenda Distribution
+            </CardTitle>
+            <CardDescription>Time spent on each agenda item</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <RechartsPieChart>
                   <Pie
-                    data={data.speakingDistribution}
+                    data={data.topicCoverage}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={60}
+                    outerRadius={80}
                     fill="#8884d8"
-                    dataKey="speakingTime"
+                    dataKey="actual"
                     nameKey="name"
                   >
-                    {data.speakingDistribution.map((entry, index) => (
+                    {data.topicCoverage.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Tooltip formatter={(value: number) => [`${Math.round(value)}%`, 'Coverage']} />
                 </RechartsPieChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div>
-            <h4 className="mb-2 text-sm font-medium">Interaction Statistics</h4>
-            <div className="h-40">
+        {/* Speaker Contributions Card */}
+        <Card className="max-w-full overflow-hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" /> Speaker Contributions
+            </CardTitle>
+            <CardDescription>Speaking time distribution among participants</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={data.interactionStats}
+                  data={data.speakerContributions}
                   layout="vertical"
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
-                  <XAxis type="number" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" domain={[0, 100]} />
                   <YAxis type="category" dataKey="name" width={100} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#8884d8" />
+                  <Tooltip formatter={(value: number) => [`${value}%`, 'Contribution']} />
+                  <Bar dataKey="contributions" fill="#8884d8">
+                    {data.speakerContributions.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
 
-        <div className="mt-6 grid grid-cols-3 gap-4">
-          <div>
-            <h4 className="mb-2 text-sm font-medium text-green-500">High Engagement</h4>
-            <ul className="space-y-1">
-              {data.engagement.high.map((name, i) => (
-                <li key={i} className="text-sm">{name}</li>
+// Meeting Transitions Card
+const MeetingTransitionsCard = ({ meetingId }: { meetingId: string }) => {
+  const { data: transitionData, isLoading } = useQuery<TransitionData>({
+    queryKey: ['/api/reports/transitions', meetingId],
+    enabled: !!meetingId,
+  });
+
+  if (isLoading) return (
+    <Card className="max-w-full overflow-hidden">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" /> Meeting Transitions
+        </CardTitle>
+        <CardDescription>Speaker transitions and sentiment analysis</CardDescription>
+      </CardHeader>
+      <CardContent className="h-64 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </CardContent>
+    </Card>
+  );
+
+  // Use test data if API data is not available
+  const data = transitionData || {
+    meeting_id: 1,
+    meeting_title: "Sample Meeting",
+    transitions: [
+      {
+        from_speaker: "Alice",
+        to_speaker: "Bob",
+        transition_smoothness: 1.0,
+        sentiment: "Positive"
+      },
+      {
+        from_speaker: "Bob",
+        to_speaker: "Charlie",
+        transition_smoothness: 0.3,
+        sentiment: "Negative"
+      }
+    ]
+  };
+
+  return (
+    <Card className="max-w-full overflow-hidden">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" /> Meeting Transitions
+        </CardTitle>
+        <CardDescription>Speaker transitions and sentiment analysis</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-6">
+          {/* Transition Flow */}
+          <div className="relative">
+            <div className="flex items-center justify-between">
+              {data.transitions.map((transition, index) => (
+                <React.Fragment key={index}>
+                  <div className="flex flex-col items-center">
+                    <div className={cn(
+                      "w-16 h-16 rounded-full flex items-center justify-center text-sm font-medium",
+                      transition.sentiment === "Positive" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                    )}>
+                      {transition.from_speaker}
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {Math.round(transition.transition_smoothness * 100)}% smooth
+                    </div>
+                  </div>
+                  {index < data.transitions.length - 1 && (
+                    <div className="flex-1 h-0.5 bg-border mx-4 relative">
+                      <div 
+                        className={cn(
+                          "absolute top-0 left-0 h-full",
+                          transition.sentiment === "Positive" ? "bg-green-500" : "bg-red-500"
+                        )}
+                        style={{ width: `${transition.transition_smoothness * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </React.Fragment>
               ))}
-            </ul>
+              <div className={cn(
+                "w-16 h-16 rounded-full flex items-center justify-center text-sm font-medium",
+                data.transitions[data.transitions.length - 1].sentiment === "Positive" 
+                  ? "bg-green-100 text-green-800" 
+                  : "bg-red-100 text-red-800"
+              )}>
+                {data.transitions[data.transitions.length - 1].to_speaker}
+              </div>
+            </div>
           </div>
-          <div>
-            <h4 className="mb-2 text-sm font-medium text-yellow-500">Medium Engagement</h4>
-            <ul className="space-y-1">
-              {data.engagement.medium.map((name, i) => (
-                <li key={i} className="text-sm">{name}</li>
-              ))}
-            </ul>
+
+          {/* Sentiment Summary */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Positive Transitions</h4>
+              <div className="text-2xl font-bold text-green-600">
+                {data.transitions.filter(t => t.sentiment === "Positive").length}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium mb-2">Negative Transitions</h4>
+              <div className="text-2xl font-bold text-red-600">
+                {data.transitions.filter(t => t.sentiment === "Negative").length}
+              </div>
+            </div>
           </div>
+
+          {/* Average Smoothness */}
           <div>
-            <h4 className="mb-2 text-sm font-medium text-red-500">Low Engagement</h4>
-            <ul className="space-y-1">
-              {data.engagement.low.map((name, i) => (
-                <li key={i} className="text-sm">{name}</li>
-              ))}
-            </ul>
+            <h4 className="text-sm font-medium mb-2">Average Transition Smoothness</h4>
+            <div className="text-2xl font-bold">
+              {Math.round(
+                (data.transitions.reduce((acc, t) => acc + t.transition_smoothness, 0) / 
+                data.transitions.length) * 100
+              )}%
+            </div>
           </div>
         </div>
       </CardContent>
     </Card>
   );
 };
-
-// Define interface for meeting data 
-interface Meeting {
-  id: number;
-  title: string;
-  status: string;
-  [key: string]: any;
-}
 
 // Comprehensive Meeting Report page
 export default function ReportsPage() {
@@ -526,7 +470,7 @@ export default function ReportsPage() {
   const [selectedMeetingId, setSelectedMeetingId] = useState<string>(meetingId || "");
 
   // Query to get all meetings
-   const { data: meetings, isLoading: isLoadingMeetings } = useQuery<Meeting[]>({
+  const { data: meetings, isLoading: isLoadingMeetings } = useQuery<Meeting[]>({
     queryKey: ['/api/meetings', { status: 'completed' }],
   });
 
@@ -573,47 +517,25 @@ export default function ReportsPage() {
         </div>
       ) : (
         <div className="flex-1 overflow-hidden">
-          <Tabs defaultValue="overview" className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="overview" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" /> Overview
+          <Tabs defaultValue="drift" className="h-full flex flex-col">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="drift" className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" /> Drift Analysis
               </TabsTrigger>
               <TabsTrigger value="sentiment" className="flex items-center gap-2">
-                <Dices className="h-4 w-4" /> Sentiment
-              </TabsTrigger>
-              <TabsTrigger value="topics" className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" /> Topics
-              </TabsTrigger>
-              <TabsTrigger value="participants" className="flex items-center gap-2">
-                <Users className="h-4 w-4" /> Participants
+                <Users className="h-4 w-4" /> Sentiment Analysis
               </TabsTrigger>
             </TabsList>
             
-            <TabsContent value="overview" className="mt-6 flex-1 overflow-auto">
-              <div className="grid gap-6 md:grid-cols-2 pb-6 max-w-full">
-                <SentimentAnalysisCard meetingId={selectedMeetingId} />
-                <TopicDriftCard meetingId={selectedMeetingId} />
-                <ToneAnalysisCard meetingId={selectedMeetingId} />
-                <ParticipantAnalysisCard meetingId={selectedMeetingId} />
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="sentiment" className="mt-6 flex-1 overflow-auto">
-              <div className="pb-6 max-w-full">
-                <SentimentAnalysisCard meetingId={selectedMeetingId} />
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="topics" className="mt-6 flex-1 overflow-auto">
+            <TabsContent value="drift" className="mt-6 flex-1 overflow-auto">
               <div className="pb-6 max-w-full">
                 <TopicDriftCard meetingId={selectedMeetingId} />
               </div>
             </TabsContent>
 
-            <TabsContent value="participants" className="mt-6 flex-1 overflow-auto">
-              <div className="grid gap-6 md:grid-cols-2 pb-6 max-w-full">
-                <ToneAnalysisCard meetingId={selectedMeetingId} />
-                <ParticipantAnalysisCard meetingId={selectedMeetingId} />
+            <TabsContent value="sentiment" className="mt-6 flex-1 overflow-auto">
+              <div className="pb-6 max-w-full">
+                <MeetingTransitionsCard meetingId={selectedMeetingId} />
               </div>
             </TabsContent>
           </Tabs>
