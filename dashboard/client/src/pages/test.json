@@ -1,0 +1,126 @@
+{
+  "overallSentiment": 0.75,
+  "sentimentOverTime": [
+    { "time": "0:00", "score": 0.6 },
+    { "time": "5:00", "score": 0.7 },
+    { "time": "10:00", "score": 0.8 },
+    { "time": "15:00", "score": 0.7 },
+    { "time": "20:00", "score": 0.9 }
+  ],
+  "topPositiveTopics": [
+    "Product features",
+    "Customer feedback",
+    "Team collaboration",
+    "Innovation opportunities",
+    "Market growth"
+  ],
+  "topNegativeTopics": [
+    "Budget constraints",
+    "Timeline pressure",
+    "Resource limitations",
+    "Technical challenges"
+  ],
+  "topicDriftScore": 0.35,
+  "plannedTopics": [
+    "Q2 Roadmap",
+    "Team Updates",
+    "Resource Planning",
+    "Technical Architecture"
+  ],
+  "topicCoverage": [
+    {
+      "name": "Q2 Roadmap",
+      "planned": 30,
+      "actual": 25,
+      "drift": 5
+    },
+    {
+      "name": "Team Updates",
+      "planned": 25,
+      "actual": 30,
+      "drift": -5
+    },
+    {
+      "name": "Resource Planning",
+      "planned": 25,
+      "actual": 20,
+      "drift": 5
+    },
+    {
+      "name": "Technical Architecture",
+      "planned": 20,
+      "actual": 15,
+      "drift": 5
+    }
+  ],
+  "unexpectedTopics": [
+    "New market opportunities",
+    "Competitor analysis",
+    "Customer support improvements"
+  ],
+  "dominantTones": [
+    "Analytical",
+    "Confident",
+    "Professional"
+  ],
+  "toneBreakdown": [
+    { "tone": "Analytical", "percentage": 40 },
+    { "tone": "Confident", "percentage": 30 },
+    { "tone": "Tentative", "percentage": 15 },
+    { "tone": "Casual", "percentage": 10 },
+    { "tone": "Formal", "percentage": 5 }
+  ],
+  "participants": [
+    {
+      "name": "John Doe",
+      "tones": {
+        "analytical": 80,
+        "confident": 70,
+        "tentative": 30,
+        "casual": 20,
+        "formal": 10
+      }
+    },
+    {
+      "name": "Jane Smith",
+      "tones": {
+        "analytical": 60,
+        "confident": 90,
+        "tentative": 20,
+        "casual": 40,
+        "formal": 30
+      }
+    },
+    {
+      "name": "Bob Wilson",
+      "tones": {
+        "analytical": 70,
+        "confident": 50,
+        "tentative": 40,
+        "casual": 60,
+        "formal": 20
+      }
+    }
+  ],
+  "participantCount": 8,
+  "speakingDistribution": [
+    { "name": "John Doe", "speakingTime": 30 },
+    { "name": "Jane Smith", "speakingTime": 25 },
+    { "name": "Bob Wilson", "speakingTime": 20 },
+    { "name": "Alice Brown", "speakingTime": 15 },
+    { "name": "Charlie Davis", "speakingTime": 10 }
+  ],
+  "interactionStats": [
+    { "name": "John Doe", "count": 15 },
+    { "name": "Jane Smith", "count": 12 },
+    { "name": "Bob Wilson", "count": 10 },
+    { "name": "Alice Brown", "count": 8 },
+    { "name": "Charlie Davis", "count": 5 }
+  ],
+  "engagement": {
+    "high": ["John Doe", "Jane Smith"],
+    "medium": ["Bob Wilson", "Alice Brown"],
+    "low": ["Charlie Davis", "Eve White", "Frank Miller"]
+  }
+}
+
