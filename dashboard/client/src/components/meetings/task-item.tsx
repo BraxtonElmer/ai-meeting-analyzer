@@ -2,6 +2,7 @@ import React from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Task } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 
 interface TaskItemProps {
   task: Task;
@@ -9,6 +10,8 @@ interface TaskItemProps {
 }
 
 export function TaskItem({ task, onUpdate }: TaskItemProps) {
+  const { user } = useAuth();
+  
   const handleCheckboxChange = (checked: boolean) => {
     onUpdate?.({ completed: checked });
   };
@@ -59,7 +62,10 @@ export function TaskItem({ task, onUpdate }: TaskItemProps) {
                 getAvatarColorClass(task.assignee)
               )}
             >
-              {task.assignee.fullName.split(' ')[0]}
+              {user && task.assignee && task.assignee.id === user.id 
+                ? "Me" 
+                : task.assignee.fullName.split(' ')[0]
+              }
             </span>
           )}
           {task.dueDate && (

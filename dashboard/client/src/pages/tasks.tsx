@@ -16,16 +16,20 @@ import { TaskItem } from '@/components/meetings/task-item';
 import { CreateTaskDialog } from '@/components/tasks/create-task-dialog';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
 
 export default function Tasks() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [meetingFilter, setMeetingFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('pending');
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [createActionItemOpen, setCreateActionItemOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
+  
+  // Use the current user ID as the default assignee filter instead of 'all'
+  const [assigneeFilter, setAssigneeFilter] = useState(user ? String(user.id) : 'all');
 
   // Fetch tasks with filters
   const { data: tasks, isLoading, refetch } = useQuery<Task[]>({
@@ -46,6 +50,13 @@ export default function Tasks() {
   useEffect(() => {
     refetch();
   }, [activeTab, assigneeFilter, meetingFilter, refetch]);
+  
+  // Update assigneeFilter when user data becomes available
+  useEffect(() => {
+    if (user) {
+      setAssigneeFilter(String(user.id));
+    }
+  }, [user]);
 
   // Task update mutation
   const taskUpdateMutation = useMutation({
@@ -120,12 +131,19 @@ export default function Tasks() {
 
   return (
     <>
-      <Header title="Task Management" setIsMobileOpen={setIsMobileOpen} />
+      <Header 
+        title={assigneeFilter === 'all' ? 'All Tasks' : 
+              user && assigneeFilter === String(user.id) ? 'My Tasks' : 'Task Management'} 
+        setIsMobileOpen={setIsMobileOpen} 
+      />
       <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
         <div className="max-w-6xl mx-auto">
           {/* Header with filters */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
-            <h1 className="text-2xl font-bold mb-4 md:mb-0">Task Management</h1>
+            <h1 className="text-2xl font-bold mb-4 md:mb-0">
+              {assigneeFilter === 'all' ? 'All Tasks' : 
+               user && assigneeFilter === String(user.id) ? 'My Tasks' : 'Task Management'}
+            </h1>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <Select
                 value={assigneeFilter}
@@ -136,6 +154,9 @@ export default function Tasks() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Assignees</SelectItem>
+                  {user && (
+                    <SelectItem value={String(user.id)}>My Tasks</SelectItem>
+                  )}
                   <SelectItem value="1">John Doe</SelectItem>
                   <SelectItem value="2">Sarah Lee</SelectItem>
                   <SelectItem value="3">Mike Thompson</SelectItem>
@@ -181,7 +202,10 @@ export default function Tasks() {
           <Card>
             <CardHeader className="pb-0">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle>Tasks</CardTitle>
+                <CardTitle>
+                  {assigneeFilter === 'all' ? 'All Tasks' : 
+                   user && assigneeFilter === String(user.id) ? 'My Tasks' : 'Filtered Tasks'}
+                </CardTitle>
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4 sm:mt-0">
                   <TabsList>
                     <TabsTrigger value="pending">Pending</TabsTrigger>
@@ -203,8 +227,13 @@ export default function Tasks() {
                   <p>No {activeTab} tasks found.</p>
                   <p className="text-sm mt-2">
                     {activeTab === 'pending'
-                      ? "All tasks have been completed. Great job!"
-                      : "You haven't completed any tasks yet."}
+                      ? assigneeFilter !== 'all' && user && assigneeFilter === String(user.id)
+                        ? "You don't have any pending tasks. Great job!"
+                        : "No pending tasks found with the current filters."
+                      : assigneeFilter !== 'all' && user && assigneeFilter === String(user.id)
+                        ? "You haven't completed any tasks yet."
+                        : "No completed tasks found with the current filters."
+                    }
                   </p>
                 </div>
               ) : (

@@ -35,6 +35,7 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
 
 // Form schema
 const taskFormSchema = z.object({
@@ -62,6 +63,7 @@ export function CreateTaskDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const { user } = useAuth();
   
   // Fetch meetings for the dropdown
   const { data: meetings = [] } = useQuery<Array<{id: number, title: string}>>({
@@ -79,6 +81,7 @@ export function CreateTaskDialog({
   const defaultValues: Partial<TaskFormValues> = {
     meetingId: defaultMeetingId ? defaultMeetingId.toString() : '',
     title: isActionItem ? 'Action Item: ' : '',
+    assigneeId: user ? String(user.id) : undefined,
   };
   
   // Initialize the form
@@ -214,13 +217,13 @@ export function CreateTaskDialog({
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Assign to someone" />
+                        <SelectValue placeholder={user ? "Assign to me or someone else" : "Assign to someone"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {users.map(user => (
-                        <SelectItem key={user.id} value={user.id.toString()}>
-                          {user.fullName}
+                      {users.map(u => (
+                        <SelectItem key={u.id} value={u.id.toString()}>
+                          {user && u.id === user.id ? "Me" : u.fullName}
                         </SelectItem>
                       ))}
                     </SelectContent>

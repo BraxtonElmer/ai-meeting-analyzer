@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Meeting, Task } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Link } from 'wouter';
+import { useAuth } from '@/hooks/use-auth';
 
 export default function Dashboard() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -225,6 +226,8 @@ interface TaskListItemProps {
 }
 
 function TaskListItem({ task }: TaskListItemProps) {
+  const { user } = useAuth();
+  
   return (
     <div className="p-3 border rounded-md hover:bg-gray-50 transition-colors">
       <div className="flex items-start">
@@ -234,7 +237,10 @@ function TaskListItem({ task }: TaskListItemProps) {
           <div className="flex items-center mt-1 text-sm">
             {task.assignee && (
               <span className={`bg-${task.assignee.avatarColor} text-xs py-0.5 px-2 rounded-full mr-2`}>
-                {task.assignee.fullName.split(' ')[0]}
+                {user && task.assignee.id === user.id 
+                  ? "Me" 
+                  : task.assignee.fullName.split(' ')[0]
+                }
               </span>
             )}
             {task.dueDate && (
