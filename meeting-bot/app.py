@@ -13,11 +13,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-@app.route('/api/caption-bot/start', methods=['POST'])
+@app.route('/api/caption-bot/start', methods=['GET'])
 def start_caption_bot():
-    data = request.get_json()
-    logger.info(f"Received bot start request with data: {data}")
-    meeting_code = data.get('meeting_code')
+    meeting_code = request.args.get('meeting_code')
+    logger.info(f"Received bot start request with meeting code: {meeting_code}")
     if not meeting_code:
         logger.error("No meeting code provided in request")
         return jsonify({"status": "error", "message": "No meeting code provided"}), 400
