@@ -100,7 +100,35 @@ export default function ImportMeeting() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const result = await response.json();
+      const responseData = await response.json();
+      
+      console.log("Meeting import response data:", responseData);
+      
+      // Start caption bot if a meeting URL was provided (for live meetings)
+      if (data.meetingUrl) {
+        try {
+          console.log(`Starting caption bot for meeting ID: ${responseData.id}`);
+          const botResponse = await fetch('http://localhost:5050/api/caption-bot/start', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              meetingUrl: data.meetingUrl,
+              meetingId: responseData.id,
+            }),
+          });
+          
+          if (!botResponse.ok) {
+            console.error('Failed to start caption bot:', await botResponse.text());
+          } else {
+            const botData = await botResponse.json();
+            console.log('Caption bot started successfully:', botData);
+          }
+        } catch (botError) {
+          console.error('Error starting caption bot:', botError);
+        }
+      }
 
       toast({
         title: "Meeting imported successfully!",
@@ -108,7 +136,7 @@ export default function ImportMeeting() {
       });
 
       setTimeout(() => {
-        navigate(`/live-meeting?id=${result.id}`);
+        navigate(`/live-meeting?id=${responseData.id}`);
       }, 1000);
 
     } catch (error: any) {

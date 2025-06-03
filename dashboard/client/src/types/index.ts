@@ -35,6 +35,7 @@ export interface TranscriptionEntry {
   text: string;
   timestamp: string;
   createdAt: string;
+  live?: boolean;
 }
 
 // Task related types

@@ -109,6 +109,7 @@ export const transcriptionEntries = pgTable("transcription_entries", {
   userId: integer("user_id").notNull().references(() => users.id),
   text: text("text").notNull(),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
+    live: boolean("live").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -130,6 +131,7 @@ export const insertTranscriptionEntrySchema = createInsertSchema(transcriptionEn
   userId: true,
   text: true,
   timestamp: true,
+  live: true,
 });
 
 export type InsertTranscriptionEntry = z.infer<typeof insertTranscriptionEntrySchema>;

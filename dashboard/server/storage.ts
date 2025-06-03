@@ -281,10 +281,20 @@ export const storage = {
   },
 
   // Transcription functions
-  async getTranscriptionEntries(meetingId: number): Promise<TranscriptionEntry[]> {
+  async getTranscriptionEntries(meetingId: number, liveOnly: boolean = false): Promise<TranscriptionEntry[]> {
+    // Build the where clause based on liveOnly flag
+    let whereClause: any = eq(transcriptionEntries.meetingId, meetingId);
+    
+    if (liveOnly) {
+      whereClause = and(
+        eq(transcriptionEntries.meetingId, meetingId),
+        eq(transcriptionEntries.live, true)
+      );
+    }
+    
     // Enhanced query to ensure user information is included
     const entries = await db.query.transcriptionEntries.findMany({
-      where: eq(transcriptionEntries.meetingId, meetingId),
+      where: whereClause,
       orderBy: [transcriptionEntries.timestamp],
       with: {
         user: true,
@@ -292,7 +302,7 @@ export const storage = {
     });
 
     // Log entries to diagnose any issues with missing user information
-    console.log(`Retrieved ${entries.length} transcription entries for meeting ${meetingId}`);
+    console.log(`Retrieved ${entries.length} transcription entries for meeting ${meetingId}${liveOnly ? ' (live only)' : ''}`);
     
     // Check for entries with missing user info
     const entriesWithMissingUser = entries.filter(entry => !entry.user);
@@ -323,7 +333,8 @@ export const storage = {
   async addTranscriptionEntry(
     meetingId: number, 
     userId: number, 
-    text: string
+    text: string,
+    live: boolean = false
   ): Promise<TranscriptionEntry> {
     const now = new Date();
 
@@ -333,6 +344,7 @@ export const storage = {
         userId,
         text,
         timestamp: now,
+        live,
       })
       .returning();
 

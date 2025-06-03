@@ -1,28 +1,29 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { WebSocketMessage } from '@/types';
+import { io, Socket } from 'socket.io-client';
 
 interface UseWebSocketOptions {
   onMessage?: (message: WebSocketMessage) => void;
   onOpen?: () => void;
   onClose?: () => void;
-  onError?: (error: Event) => void;
+  onError?: (error: any) => void;
   autoReconnect?: boolean;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
 }
 
 export function useWebSocket(
-  meetingId?: number,
+  meetingId?: number | null,
   options: UseWebSocketOptions = {}
 ) {
   // For inactive or completed meetings, we'll simulate a connected state
   // so UI won't show disconnection warnings
-  const shouldSimulateConnection = meetingId === undefined;
+  const shouldSimulateConnection = meetingId === undefined || meetingId === null;
   
   // Initialize connection state based on meeting status
   const [isConnected, setIsConnected] = useState(shouldSimulateConnection);
-  const [error, setError] = useState<Event | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
+  const [error, setError] = useState<any | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasCalledOnCloseRef = useRef(false);
@@ -39,10 +40,10 @@ export function useWebSocket(
     reconnectInterval = 5000,
     maxReconnectAttempts = 3
   } = options;
-
   const connect = useCallback(() => {
-    // Skip connection if meeting ID is undefined (completed meetings)
-    if (meetingId === undefined) {
+    // Skip connection if meeting ID is undefined or null
+    if (meetingId === undefined || meetingId === null) {
+      console.log("Skipping WebSocket connection - no valid meeting ID");
       return;
     }
     
@@ -52,34 +53,52 @@ export function useWebSocket(
     }
     
     // Close existing connection if any
-    if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) {
-      socketRef.current.close();
-    }
-
-    try {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws?meetingId=${meetingId}`;
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }    try {      // Connect to the WebSocket server
+      // Use port 5050 for the Flask server
+      console.log(`Connecting to WebSocket server for meeting ID: ${meetingId}`);
+      const socket = io('http://localhost:5050', {
+        path: '/socket.io', // Default Socket.IO path
+        transports: ['websocket', 'polling'], // Support both websocket and polling
+        autoConnect: true,
+        reconnection: true, // Always enable reconnection
+        reconnectionAttempts: 10, // More attempts
+        reconnectionDelay: 1000, // Start with 1 second
+        reconnectionDelayMax: 10000, // Max of 10 seconds
+        timeout: 20000, // Longer timeout
+      });
       
-      const socket = new WebSocket(wsUrl);
-      socketRef.current = socket;
+      socketRef.current = socket;      // Join the meeting room
+      console.log(`Emitting join event for meeting ID: ${meetingId}`);
+      socket.emit('join', { meetingId: String(meetingId) });
 
-      socket.addEventListener('open', () => {
+      socket.on('connect', () => {
+        console.log(`WebSocket connected for meeting ID: ${meetingId}`);
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
         hasCalledOnCloseRef.current = false;
         onOpen?.();
+      });      socket.on('join_confirmation', (data) => {
+        console.log('Received join confirmation:', data);
       });
-
-      socket.addEventListener('message', (event) => {
+        socket.on('transcription', (message) => {
+        console.log('Received transcription message:', JSON.stringify(message));
         try {
-          const message = JSON.parse(event.data) as WebSocketMessage;
+          // Pass the message to the handler in the correct format
           onMessage?.(message);
         } catch (err) {
-          console.error('Failed to parse WebSocket message:', err);
+          console.error('Failed to process WebSocket message:', err);
         }
       });
+      
+      // Listen for welcome messages
+      socket.on('welcome', (data) => {
+        console.log('Received welcome message:', data);
+      });
 
-      socket.addEventListener('close', (event) => {
+      socket.on('disconnect', () => {
+        console.log('WebSocket disconnected');
         setIsConnected(false);
         
         // Only call onClose callback once per connection session
@@ -87,7 +106,12 @@ export function useWebSocket(
           onClose?.();
           hasCalledOnCloseRef.current = true;
         }
+      });
 
+      socket.on('connect_error', (error) => {
+        setError(error);
+        onError?.(error);
+        
         if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
           // Exponential backoff for reconnect attempts
           const delay = reconnectInterval * Math.pow(1.5, reconnectAttemptsRef.current);
@@ -97,62 +121,47 @@ export function useWebSocket(
           }, delay);
         }
       });
-
-      socket.addEventListener('error', (event) => {
-        setError(event);
-        onError?.(event);
-      });
     } catch (err) {
-      console.error('Failed to create WebSocket connection:', err);
-      if (onError) {
-        onError(err as Event);
+      setError(err);
+      onError?.(err);
+    }
+  }, [meetingId, autoReconnect, maxReconnectAttempts, onOpen, onMessage, onClose, onError, reconnectInterval]);
+  
+  // Clean up on unmount
+  useEffect(() => {
+    isFirstMount.current = false;
+    
+    // For inactive or completed meetings, don't attempt connection
+    if (shouldSimulateConnection) {
+      return;
+    }
+    
+    connect();
+    
+    // Clean up on unmount
+    return () => {
+      if (reconnectIntervalRef.current) {
+        clearTimeout(reconnectIntervalRef.current);
       }
-    }
-  }, [meetingId, onMessage, onOpen, onClose, onError, autoReconnect, reconnectInterval, maxReconnectAttempts]);
+      
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [connect, shouldSimulateConnection]);
 
-  const disconnect = useCallback(() => {
-    if (reconnectIntervalRef.current) {
-      clearTimeout(reconnectIntervalRef.current);
-      reconnectIntervalRef.current = null;
-    }
-
-    if (socketRef.current) {
-      socketRef.current.close();
-      socketRef.current = null;
-    }
-  }, []);
-
+  // Expose a function to manually send messages
   const sendMessage = useCallback((message: any) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify(message));
+    if (socketRef.current && isConnected) {
+      socketRef.current.emit('message', message);
       return true;
     }
     return false;
-  }, []);
-
-  useEffect(() => {
-    // For inactive meetings, skip connection but maintain "connected" state
-    if (shouldSimulateConnection) {
-      setIsConnected(true);
-      return () => {};
-    }
-    
-    // Only attempt connection for active meetings
-    connect();
-    
-    // Mark as no longer first mount after initial connection attempt
-    isFirstMount.current = false;
-
-    return () => {
-      disconnect();
-    };
-  }, [connect, disconnect, shouldSimulateConnection]);
+  }, [isConnected]);
 
   return {
     isConnected,
     error,
-    sendMessage,
-    connect,
-    disconnect
+    sendMessage
   };
 }

@@ -24,6 +24,7 @@ export function TranscriptionPanel({
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     }
+    console.log("TranscriptionPanel - Entries updated:", entries.length, JSON.stringify(entries));
   }, [entries]);
 
   const formatTime = (timestamp: string) => {
@@ -90,6 +91,11 @@ export function TranscriptionPanel({
                     <span className="text-gray-400 text-xs ml-2">
                       {formatTime(entry.timestamp)}
                     </span>
+                    {entry.live && (
+                      <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                        LIVE
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 text-gray-700 leading-relaxed">{entry.text}</p>
                 </div>

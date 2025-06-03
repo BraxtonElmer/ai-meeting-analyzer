@@ -944,6 +944,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/meetings/:id/transcription', async (req, res) => {
     try {
       const meetingId = parseInt(req.params.id);
+      const liveOnly = req.query.liveOnly === 'true';
       
       // Check if user has access to this meeting
       const hasAccess = await checkUserMeetingAccess(req, meetingId);
@@ -951,10 +952,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
       }
       
-      const transcriptions = await storage.getTranscriptionEntries(meetingId);
+      // Get transcriptions with optional live filter
+      const transcriptions = await storage.getTranscriptionEntries(meetingId, liveOnly);
       res.json(transcriptions);
     } catch (error) {
       console.error('Error fetching transcriptions:', error);
+      res.status(500).json({ message: 'Failed to fetch transcriptions' });
+    }
+  });
+
+  // Update to get all transcriptions for a meeting
+  app.get('/api/meetings/:id/transcription/all', async (req, res) => {
+    try {
+      const meetingId = parseInt(req.params.id);
+      
+      // Check if user has access to this meeting
+      const hasAccess = await checkUserMeetingAccess(req, meetingId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Meeting not available - you can only access meetings you created or have been invited to' });
+      }
+      
+      // Get all transcriptions regardless of live status
+      const transcriptions = await storage.getTranscriptionEntries(meetingId, false);
+      res.json(transcriptions);
+    } catch (error) {
+      console.error('Error fetching all transcriptions:', error);
       res.status(500).json({ message: 'Failed to fetch transcriptions' });
     }
   });
@@ -988,7 +1010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Special API endpoint for Python bot to add transcriptions
   app.post('/api/bot/transcription', async (req, res) => {
     try {
-      const { meetingId, userId, text, apiKey } = req.body;
+      const { meetingId, userId, text, apiKey, live = true } = req.body;
       
       // Validate required fields
       if (!meetingId || !userId || !text) {
@@ -1001,8 +1023,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: 'Invalid API key' });
       }
       
-      // Add the transcription entry
-      const entry = await storage.addTranscriptionEntry(meetingId, userId, text);
+      // Add the transcription entry with live status
+      const entry = await storage.addTranscriptionEntry(meetingId, userId, text, live);
       
       // Broadcast to WebSocket clients
       broadcastToMeeting(meetingId, {
@@ -1996,6 +2018,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching participant analysis report:', error);
       res.status(500).json({ message: 'Failed to generate participant analysis report' });
+    }
+  });
+
+  // Special API endpoint for updating transcription live status
+  app.post('/api/meetings/:id/transcription/update-status', async (req, res) => {
+    try {
+      const meetingId = parseInt(req.params.id);
+      const { live, apiKey } = req.body;
+      
+      // Validate required fields
+      if (live === undefined) {
+        return res.status(400).json({ message: 'Missing required field: live' });
+      }
+      
+      // Basic API key validation - in a real app, use a secure method
+      const validApiKey = process.env.BOT_API_KEY || 'ai-meeting-assistant-bot-key';
+      if (apiKey !== validApiKey) {
+        return res.status(401).json({ message: 'Invalid API key' });
+      }
+      
+      // Update all transcription entries for this meeting
+      const result = await db.update(transcriptionEntries)
+        .set({ live: !!live })
+        .where(eq(transcriptionEntries.meetingId, meetingId))
+        .returning();
+      
+      console.log(`Updated ${result.length} transcription entries for meeting ${meetingId} to live=${live}`);
+      
+      // Return success
+      res.status(200).json({ 
+        status: 'success', 
+        message: `Updated ${result.length} transcription entries`, 
+        count: result.length 
+      });
+      
+    } catch (error) {
+      console.error('Error updating transcription live status:', error);
+      res.status(500).json({ message: 'Failed to update transcription live status' });
     }
   });
 

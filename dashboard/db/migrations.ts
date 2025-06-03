@@ -63,6 +63,7 @@ export async function tryToInitializeDb(pool: Pool): Promise<void> {
       "user_id" INTEGER NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
       "text" TEXT NOT NULL,
       "timestamp" TIMESTAMP WITH TIME ZONE NOT NULL,
+      "live" BOOLEAN NOT NULL DEFAULT FALSE,
       "created_at" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
   `;

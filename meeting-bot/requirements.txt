@@ -1,2 +1,8 @@
 undetected-chromedriver
 selenium
+flask
+flask-cors
+flask-socketio
+requests
+psycopg2-binary
+mysql-connector-python

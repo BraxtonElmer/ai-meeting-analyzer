@@ -22,24 +22,44 @@ export default function LiveMeeting() {
   const [matchTranscript, paramsTranscript] = useRoute<{ id: string }>('/meetings/:id/transcript');
   const [matchSummary, paramsSummary] = useRoute<{ id: string }>('/meetings/:id/summary');
   const [matchTasks, paramsTasks] = useRoute<{ id: string }>('/meetings/:id/tasks');
+  const [matchLive, paramsLive] = useRoute<{ id: string }>('/live-meeting');
   
-  // Extract the meeting ID from parameters or default to 1
-  const meetingId = parseInt(
-    paramsTranscript?.id || paramsSummary?.id || paramsTasks?.id || '1'
-  );
+  // Get the ID from the query string if using /live-meeting?id=X format
+  const getQueryParam = (name: string) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get(name);
+  };
+    // Extract the meeting ID from parameters or query string
+  const meetingIdStr = 
+    paramsTranscript?.id || 
+    paramsSummary?.id || 
+    paramsTasks?.id || 
+    getQueryParam('id');
+    
+  // Convert to number if available, otherwise use null to prevent using a default
+  const meetingId = meetingIdStr ? parseInt(meetingIdStr) : null;
+  
+  console.log("Using meeting ID:", meetingId, "from raw value:", meetingIdStr);
 
   // Fetch current meeting data with stability measures
   const { data: meeting, isLoading: isLoadingMeeting } = useQuery({
     queryKey: [`/api/meetings/${meetingId}`],
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: false,
-  });
-
+  });  // Determine if we should fetch only live transcriptions
+  const fetchLiveOnly = meeting?.status === 'live';
   // Fetch transcription with stable results
-  const { data: transcription = [], isLoading: isLoadingTranscription } = useQuery<TranscriptionEntry[]>({
-    queryKey: [`/api/meetings/${meetingId}/transcription`],
-    staleTime: 10000, // 10 seconds
-    refetchOnWindowFocus: false,
+  const { data: transcription = [], isLoading: isLoadingTranscription, refetch: refetchTranscription } = useQuery<TranscriptionEntry[]>({
+    queryKey: [`/api/meetings/${meetingId}/transcription`, { liveOnly: fetchLiveOnly }],
+    queryFn: async () => {
+      const response = await fetch(`/api/meetings/${meetingId}/transcription${fetchLiveOnly ? '?liveOnly=true' : ''}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch transcription');
+      }
+      return response.json();
+    },
+    staleTime: 0, // Set to 0 to always fetch fresh data
+    refetchOnWindowFocus: true
   });
 
   // Fetch tasks with stable results
@@ -200,64 +220,99 @@ export default function LiveMeeting() {
       
       return () => clearTimeout(timer);
     }
-  }, [meetingId, meeting, transcription, tasks, generateTasksMutation]);
-  
-  // Handle WebSocket messages
+  }, [meetingId, meeting, transcription, tasks, generateTasksMutation]);  // Handle WebSocket messages
   const handleWebSocketMessage = (message: any) => {
-    switch (message.type) {
-      case 'transcription':
-        // Update transcription data
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}/transcription`],
-          (old: TranscriptionEntry[] = []) => [...old, message.data.entry]
-        );
-        break;
-      case 'summary':
-        // Update meeting summary
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}`],
-          (old: Meeting) => ({ ...old, summary: message.data.summary })
-        );
-        break;
-      case 'task':
-        // Handle new task
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}/tasks`],
-          (old: Task[] = []) => [...old, message.data.task]
-        );
-        break;
-      case 'task_update':
-        // Handle task updates, like completion status changes
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}/tasks`],
-          (old: Task[] = []) => {
-            // Find and replace the updated task in the array
-            const updatedTask = message.data.task;
-            return old.map(task => 
-              task.id === updatedTask.id ? updatedTask : task
-            );
+    console.log('Received WebSocket message:', JSON.stringify(message));
+    
+    // For transcription messages, we need to make sure we have a proper format
+    if (message.type === 'transcription') {
+      const entry = message.data.entry;
+      console.log('Processing transcription entry:', JSON.stringify(entry));
+      
+      // Make sure we have all the required fields for the frontend
+      const processedEntry: TranscriptionEntry = {
+        id: entry.id || Date.now().toString(),
+        meetingId: entry.meetingId || meetingId,
+        userId: entry.userId || 1, // Placeholder user ID since we don't have a real one
+        text: entry.text || '',
+        timestamp: entry.timestamp || new Date().toISOString(),
+        createdAt: entry.createdAt || new Date().toISOString(),
+        live: entry.live !== undefined ? entry.live : true, // Default to live=true for WebSocket messages
+        user: {
+          id: entry.user?.id || 1, // Placeholder
+          username: entry.user?.username || 'speaker',
+          fullName: entry.user?.fullName || entry.speaker || 'Unknown Speaker',
+          email: entry.user?.email || 'speaker@example.com',
+          avatarInitials: (entry.user?.fullName ? entry.user.fullName[0] : (entry.speaker ? entry.speaker[0] : 'U')).toUpperCase(),
+          avatarColor: entry.user?.avatarColor || 'bg-blue-400'
+        }
+      };
+      
+      console.log('Processed transcription entry:', JSON.stringify(processedEntry));
+      
+      // Update transcription data - add new entry to the existing array
+      queryClient.setQueryData(
+        [`/api/meetings/${meetingId}/transcription`, { liveOnly: fetchLiveOnly }],
+        (old: TranscriptionEntry[] = []) => {
+          // Check if this entry already exists to prevent duplicates
+          const exists = old.some(item => item.id === processedEntry.id);
+          if (exists) {
+            return old;
           }
-        );
-        // Also update the general tasks list if it exists in cache
-        queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
-        break;
-      case 'chat':
-        // Update chat messages
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}/chat`],
-          (old: ChatMessage[] = []) => [...old, message.data.message]
-        );
-        break;
-      case 'meeting_update':
-        // Update meeting data
-        queryClient.setQueryData(
-          [`/api/meetings/${meetingId}`],
-          message.data.meeting
-        );
-        break;
+          return [...old, processedEntry];
+        }
+      );
+      
+      // Force a refetch to ensure UI updates
+      // We don't need this with the direct cache update, but it's a fallback
+      if (refetchTranscription) {
+        setTimeout(() => refetchTranscription(), 100);
+      }
+    } 
+    else if (message.type === 'summary') {
+      // Update meeting summary
+      queryClient.setQueryData(
+        [`/api/meetings/${meetingId}`],
+        (old: Meeting) => ({ ...old, summary: message.data.summary })
+      );
+    }
+    else if (message.type === 'task') {
+      // Handle new task
+      queryClient.setQueryData(
+        [`/api/meetings/${meetingId}/tasks`],
+        (old: Task[] = []) => [...old, message.data.task]
+      );
+    }
+    else if (message.type === 'task_update') {
+      // Handle task updates, like completion status changes
+      queryClient.setQueryData(
+        [`/api/meetings/${meetingId}/tasks`],
+        (old: Task[] = []) => {
+          // Find and replace the updated task in the array
+          const updatedTask = message.data.task;
+          return old.map(task => 
+            task.id === updatedTask.id ? updatedTask : task
+          );
+        }
+      );
+      // Also update the general tasks list if it exists in cache
+      queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+    }
+    else if (message.type === 'chat') {
+      // Update chat messages
+      queryClient.setQueryData(
+        [`/api/meetings/${meetingId}/chat`],
+        (old: ChatMessage[] = []) => [...old, message.data.message]
+      );
+    }
+    else if (message.type === 'meeting_update') {
+      // Update meeting data
+      queryClient.setQueryData(
+        [`/api/meetings/${meetingId}`],
+        message.data.meeting
+      );
     }
   };
-
   // Check if meeting is active before setting up WebSocket connection
   const isMeetingActive = meeting?.status === 'live' || meeting?.status === 'scheduled';
   
@@ -267,14 +322,33 @@ export default function LiveMeeting() {
     {
       onMessage: handleWebSocketMessage,
       // Don't show connection notifications - we'll handle connection status with a UI indicator
-      onOpen: () => {},
+      onOpen: () => {
+        console.log("WebSocket connected - refreshing transcription data");
+        // Refresh data when connection is established
+        refetchTranscription();
+      },
       // Don't show disconnection notifications
-      onClose: () => {},
-      // Only enable auto-reconnect for active meetings
-      autoReconnect: isMeetingActive,
-      maxReconnectAttempts: 3
+      onClose: () => {
+        console.log("WebSocket disconnected");
+      },
+      // Always enable auto-reconnect
+      autoReconnect: true,
+      maxReconnectAttempts: 10
     }
   );
+  
+  // Add periodic refresh for live meetings to ensure data stays up-to-date
+  useEffect(() => {
+    if (isMeetingActive && meetingId) {
+      // Set up a polling interval as a fallback for WebSocket
+      const intervalId = setInterval(() => {
+        console.log("Refreshing transcription data...");
+        refetchTranscription();
+      }, 10000); // Refresh every 10 seconds
+      
+      return () => clearInterval(intervalId);
+    }
+  }, [isMeetingActive, meetingId, refetchTranscription]);
 
   // Task update mutation
   const taskUpdateMutation = useMutation({
