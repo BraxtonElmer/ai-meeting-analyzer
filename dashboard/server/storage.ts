@@ -367,11 +367,13 @@ export const storage = {
   async getTasks({ 
     completed,
     assigneeId,
-    meetingId
+    meetingId,
+    userId
   }: { 
     completed?: boolean;
     assigneeId?: number;
     meetingId?: number;
+    userId?: number;
   }): Promise<Task[]> {
     const conditions = [];
 
@@ -385,6 +387,36 @@ export const storage = {
 
     if (meetingId) {
       conditions.push(eq(tasks.meetingId, meetingId));
+    }
+
+    let accessibleMeetingIds: number[] = [];
+    
+    if (userId) {
+      // Get meetings where user is creator
+      const creatorMeetings = await db.select({ id: meetings.id })
+        .from(meetings)
+        .where(eq(meetings.creatorId, userId));
+      
+      // Get meetings where user is participant  
+      const participantMeetings = await db.select({ id: meetings.id })
+        .from(meetings)
+        .innerJoin(meetingParticipants, eq(meetings.id, meetingParticipants.meetingId))
+        .where(eq(meetingParticipants.userId, userId));
+        
+      // Combine and deduplicate meeting IDs
+      const meetingIdsSet = new Set([
+        ...creatorMeetings.map(m => m.id),
+        ...participantMeetings.map(m => m.id)
+      ]);
+      accessibleMeetingIds = Array.from(meetingIdsSet);
+
+      // If we have accessible meetings, add condition to filter by them
+      if (accessibleMeetingIds.length > 0) {
+        conditions.push(inArray(tasks.meetingId, accessibleMeetingIds));
+      } else {
+        // User has no accessible meetings, return empty array
+        return [];
+      }
     }
 
     const result = await db.query.tasks.findMany({

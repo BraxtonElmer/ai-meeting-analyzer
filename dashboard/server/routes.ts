@@ -1103,7 +1103,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const assigneeId = req.query.assigneeId ? parseInt(req.query.assigneeId as string) : undefined;
       const meetingId = req.query.meetingId ? parseInt(req.query.meetingId as string) : undefined;
       
-      const tasks = await storage.getTasks({ completed, assigneeId, meetingId });
+      // Get the logged-in user's ID to check their meeting access
+      if (!req.isAuthenticated() || !req.user?.id) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+      
+      const tasks = await storage.getTasks({ 
+        completed, 
+        assigneeId, 
+        meetingId,
+        userId: req.user.id 
+      });
+      
       res.json(tasks);
     } catch (error) {
       console.error('Error fetching tasks:', error);
