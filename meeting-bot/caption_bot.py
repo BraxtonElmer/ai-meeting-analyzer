@@ -3,13 +3,20 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
-import config
+import sys  
+print("Bot script started")
 
-# Meet link
-meet_link = config.meet_link
+if len(sys.argv) < 2:
+    print("Meeting code not provided.")
+    sys.exit(1)
 
-# Name you want to appear as
-guest_name = config.name
+meeting_code = sys.argv[1]
+print(f"Starting bot for meeting code: {meeting_code}")
+
+# Construct full Google Meet URL from code
+meet_link = f"https://meet.google.com/{meeting_code}"
+
+guest_name = "GuestBot"  # Or set dynamically
 
 # Chrome options to block camera and mic permissions
 options = uc.ChromeOptions()
@@ -49,9 +56,31 @@ try:
     ask_to_join.click()
     print("Asked to join the meeting as guest!")
     time.sleep(2)
-    got_it_video_popup = wait.until(EC.element_to_be_clickable(
-        (By.XPATH, '//span[@jsname="V67aGc" and text()="Got it"]')))
-    got_it_video_popup.click()
+    try:
+        got_it_buttons = wait.until(EC.presence_of_all_elements_located(
+            (By.XPATH, '//button[.//span[text()="Got it"]]')))
+
+        clicked = 0
+        for btn in got_it_buttons:
+            try:
+                if btn.is_displayed() and btn.is_enabled():
+                    driver.execute_script("arguments[0].click();", btn)
+                    print("Clicked a 'Got it' button.")
+                    clicked += 1
+                    time.sleep(3)
+            except Exception as e:
+                print("Failed to click one 'Got it' button:", e)
+        print("Found these 'Got it' buttons:")
+        for b in got_it_buttons:
+            print(b.get_attribute('outerHTML'))
+
+        if clicked == 0:
+            print("No visible 'Got it' buttons found.")
+        else:
+            print(f"Clicked {clicked} 'Got it' button(s).")
+
+    except Exception as e:
+        print("Error finding 'Got it' buttons:", e)
 
     try:
         time.sleep(1)
@@ -75,6 +104,7 @@ def capture_live_captions():
 
     while True:
         try:
+
             captions_region = driver.find_element(By.XPATH, '//div[@role="region" and @aria-label="Captions"]')
             caption_divs = captions_region.find_elements(By.XPATH, './/div[contains(@class, "nMcdL")]')
 
@@ -93,7 +123,7 @@ def capture_live_captions():
                     except:
                         speaker_name = "Unknown"
 
-                    caption_text = caption.find_element(By.CLASS_NAME, 'bh44bd').text
+                    caption_text = caption.find_element(By.CLASS_NAME, 'yg').text
 
                     if caption_text.strip():
                         print(f"{speaker_name}: {caption_text}")
