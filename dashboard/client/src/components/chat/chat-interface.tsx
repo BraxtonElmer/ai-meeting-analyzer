@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from '@/types';
 import { MessageItem } from './message-item';
+import { TypingAnimation } from './typing-animation';
 import { askAiQuestion } from '@/lib/openai';
 import { useToast } from '@/hooks/use-toast';
 
@@ -12,16 +13,20 @@ interface ChatInterfaceProps {
   messages: ChatMessage[];
   onMessageSend?: (message: string) => void;
   isLoading?: boolean;
+  isSending?: boolean;
 }
 
 export function ChatInterface({ 
   meetingId, 
   messages, 
   onMessageSend, 
-  isLoading = false
+  isLoading = false,
+  isSending: externalIsSending = false
 }: ChatInterfaceProps) {
   const [newMessage, setNewMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
+  const [localIsSending, setLocalIsSending] = useState(false);
+  // Use external isSending state if provided, otherwise use local state
+  const isSending = onMessageSend ? externalIsSending : localIsSending;
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -78,7 +83,7 @@ export function ChatInterface({
     } else {
       // Fallback to direct API call if no callback provided
       try {
-        setIsSending(true);
+        setLocalIsSending(true);
         await askAiQuestion(meetingId, tempMessage);
       } catch (error) {
         toast({
@@ -88,7 +93,7 @@ export function ChatInterface({
         });
         console.error("Failed to send message:", error);
       } finally {
-        setIsSending(false);
+        setLocalIsSending(false);
       }
     }
   };
@@ -123,9 +128,12 @@ export function ChatInterface({
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <MessageItem key={message.id} message={message} />
-          ))
+          <>
+            {messages.map((message) => (
+              <MessageItem key={message.id} message={message} />
+            ))}
+            {isSending && <TypingAnimation />}
+          </>
         )}
         <div ref={messagesEndRef} />
       </CardContent>

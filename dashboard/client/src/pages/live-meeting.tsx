@@ -17,6 +17,8 @@ export default function LiveMeeting() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  // Chat sending state
+  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   
   // Get meeting ID from URL parameters if available
   const [matchTranscript, paramsTranscript] = useRoute<{ id: string }>('/meetings/:id/transcript');
@@ -370,7 +372,6 @@ export default function LiveMeeting() {
       queryClient.invalidateQueries({ queryKey: [`/api/meetings/${meetingId}/tasks`] });
     },
   });
-
   // Chat message mutation
   const sendChatMutation = useMutation({
     mutationFn: async (message: string) => {
@@ -390,10 +391,14 @@ export default function LiveMeeting() {
   const handleTaskUpdate = (taskId: number, updates: Partial<Task>) => {
     taskUpdateMutation.mutate({ taskId, updates });
   };
-
   // Handle sending chat messages
-  const handleSendMessage = (message: string) => {
-    sendChatMutation.mutate(message);
+  const handleSendMessage = async (message: string) => {
+    try {
+      setIsSendingChatMessage(true);
+      await sendChatMutation.mutateAsync(message);
+    } finally {
+      setIsSendingChatMessage(false);
+    }
   };
 
   // Determine the correct page title based on the current route
@@ -498,13 +503,13 @@ export default function LiveMeeting() {
             </div>
           </div>
 
-          {/* Right Side (Chat & Meeting Info) */}
-          <div className="lg:col-span-3">
+          {/* Right Side (Chat & Meeting Info) */}          <div className="lg:col-span-3">
             <ChatInterface
               meetingId={meetingId}
               messages={chatMessages || []}
               isLoading={isLoadingChat}
               onMessageSend={handleSendMessage}
+              isSending={isSendingChatMessage}
             />
 
             <div className="mt-6">
