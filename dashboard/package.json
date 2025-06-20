@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push --force --config=./drizzle.config.ts",
-    "db:seed": "tsx db/seed.ts"
+    "db:seed": "tsx db/seed.ts",
+    "test:flask": "node test-flask-integration.js"
   },
   "dependencies": {
     "@faker-js/faker": "^9.7.0",
@@ -47,6 +48,7 @@
     "@replit/vite-plugin-cartographer": "^0.0.11",
     "@replit/vite-plugin-shadcn-theme-json": "^0.0.4",
     "@tanstack/react-query": "^5.60.5",
+    "axios": "^1.9.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
@@ -59,8 +61,6 @@
     "embla-carousel-react": "^8.3.0",
     "express": "^4.21.2",
     "express-mysql-session": "^3.0.3",
-    "socket.io": "^4.7.4",
-    "socket.io-client": "^4.7.4",
     "express-session": "^1.18.1",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.2.4",
@@ -77,6 +77,8 @@
     "react-icons": "^5.4.0",
     "react-resizable-panels": "^2.1.4",
     "recharts": "^2.13.0",
+    "socket.io": "^4.7.4",
+    "socket.io-client": "^4.7.4",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.0",

@@ -92,3 +92,18 @@ export interface MeetingUpdateMessage extends WebSocketMessage {
     meeting: Meeting;
   };
 }
+
+// Topic Drift response type
+export interface TopicDriftResponse {
+  topicDriftScore: number;
+  plannedTopics: string[];
+  topicCoverage: Array<{ name: string; planned: number; actual: number; drift: number }>;
+  unexpectedTopics: string[];
+  speakerContributions: Array<{ name: string; contributions: number }>;
+  speakerDrift: Array<{
+    time: string;
+    speakers: {
+      [key: string]: number; // drift score for each speaker at this time
+    };
+  }>;
+}
