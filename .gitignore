@@ -2,3 +2,22 @@
 /analysis/data/
 /analysis/cleaning/
 /analysis/agenda_drift_results/
+
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python cache and virtual env
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local artifacts and debug outputs
+*.log
+dashboard/cookies.txt
+dashboard/attached_assets/*.txt

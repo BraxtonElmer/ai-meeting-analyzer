@@ -30,7 +30,7 @@ Open `python_bot_example.py` and verify the configuration:
 ```python
 # Configuration
 API_URL = "http://localhost:5000/api/bot/transcription"
-BOT_API_KEY = "ai-meeting-assistant-bot-key"  # This matches the default key in our server
+BOT_API_KEY = "replace_with_the_same_key_as_dashboard_env"
 MEETING_ID = 1  # Change this to the meeting ID you want to add transcription to
 USER_ID = 9  # This is the user ID that will be shown as the speaker
 ```
@@ -98,7 +98,7 @@ You can customize the bot by:
 - Verify the meeting ID exists in your database
 
 ### Authentication Issues
-- Check that the BOT_API_KEY matches the key in the server (server/routes.ts)
+- Check that BOT_API_KEY is set in dashboard `.env` and matches the value used by your bot script
 
 ### User ID Issues
 - Make sure the USER_ID corresponds to an existing user in your database

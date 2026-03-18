@@ -5,6 +5,7 @@ import os
 import sys
 import logging
 import json
+import secrets
 from datetime import datetime
 import psycopg2
 from psycopg2 import Error
@@ -14,8 +15,8 @@ from psycopg2.extras import RealDictCursor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database connection string from dashboard .env
-DATABASE_URL = "postgresql://neondb_owner:npg_n7umgwIQ3XAR@ep-shrill-shadow-a6ivhg1j.us-west-2.aws.neon.tech/neondb?sslmode=require"
+# Database connection string from environment
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_connection():
     """
@@ -25,6 +26,9 @@ def get_connection():
         psycopg2.connection: Database connection object or None if connection fails
     """
     try:
+        if not DATABASE_URL:
+            logger.error("DATABASE_URL is not set. Configure it in your environment before running the bot.")
+            return None
         connection = psycopg2.connect(DATABASE_URL)
         logger.info("Connected to PostgreSQL database")
         return connection
@@ -156,8 +160,8 @@ def get_or_create_user_for_speaker(cursor, speaker_name):
         RETURNING id
         """
         
-        # Use a placeholder password - in a real app, you'd want to generate a secure password
-        password = "password123"
+        # Use a random one-time value for bot-created placeholder accounts.
+        password = secrets.token_urlsafe(24)
         email = f"{username}@example.com"
         
         cursor.execute(insert_query, (username, password, speaker_name, email, initials.upper(), color))

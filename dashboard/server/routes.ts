@@ -1018,8 +1018,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Missing required fields: meetingId, userId, text' });
       }
       
-      // Basic API key validation - in a real app, use a secure method
-      const validApiKey = process.env.BOT_API_KEY || 'ai-meeting-assistant-bot-key';
+      // Require BOT_API_KEY from environment for bot endpoint authentication.
+      const validApiKey = process.env.BOT_API_KEY;
+      if (!validApiKey) {
+        return res.status(500).json({ message: 'Server configuration error: BOT_API_KEY is not set' });
+      }
       if (apiKey !== validApiKey) {
         return res.status(401).json({ message: 'Invalid API key' });
       }
@@ -2348,8 +2351,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Missing required field: live' });
       }
       
-      // Basic API key validation - in a real app, use a secure method
-      const validApiKey = process.env.BOT_API_KEY || 'ai-meeting-assistant-bot-key';
+      // Require BOT_API_KEY from environment for bot endpoint authentication.
+      const validApiKey = process.env.BOT_API_KEY;
+      if (!validApiKey) {
+        return res.status(500).json({ message: 'Server configuration error: BOT_API_KEY is not set' });
+      }
       if (apiKey !== validApiKey) {
         return res.status(401).json({ message: 'Invalid API key' });
       }

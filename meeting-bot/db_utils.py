@@ -13,8 +13,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Dashboard API endpoint for adding transcriptions
-DASHBOARD_API_URL = "http://localhost:3000/api/bot/transcription"
-BOT_API_KEY = "ai-meeting-assistant-bot-key"  # This should match the API key in the dashboard server
+DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "http://localhost:3000/api/bot/transcription")
+BOT_API_KEY = os.getenv("BOT_API_KEY", "")
+
+
+def _has_bot_api_key():
+    if BOT_API_KEY:
+        return True
+    logger.error("BOT_API_KEY is not set. Add BOT_API_KEY to your environment.")
+    return False
 
 def add_transcription_to_database(meeting_id, speaker, text, timestamp=None):
     """
@@ -29,6 +36,9 @@ def add_transcription_to_database(meeting_id, speaker, text, timestamp=None):
     Returns:
         dict: The response from the API or None if there was an error
     """
+    if not _has_bot_api_key():
+        return None
+
     if timestamp is None:
         timestamp = datetime.now().isoformat()
         
@@ -78,6 +88,9 @@ def update_transcription_live_status(meeting_id, live_status=False):
     Returns:
         bool: True if successful, False otherwise
     """
+    if not _has_bot_api_key():
+        return False
+
     try:
         # Endpoint for updating transcription live status
         update_url = f"http://localhost:3000/api/meetings/{meeting_id}/transcription/update-status"

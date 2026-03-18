@@ -2,10 +2,11 @@ import requests
 import json
 import time
 import random
+import os
 
 # Configuration
 API_URL = "http://localhost:5000/api/bot/transcription"
-BOT_API_KEY = "ai-meeting-assistant-bot-key"  # This matches the default key in our server
+BOT_API_KEY = os.getenv("BOT_API_KEY", "replace_with_your_bot_api_key")
 MEETING_ID = 1  # Change this to the meeting ID you want to add transcription to
 USER_ID = 9  # This is the user ID we just created
 

@@ -1,12 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from chatbot import MeetingChatbot
 import markdown
+import os
 from markupsafe import Markup
 from config import GEMINI_API_KEY
 import database
 
 app = Flask(__name__)
-app.secret_key = 'tung tung tung tung tung tung tung sahur'
+app.secret_key = os.getenv('CHATBOT_SECRET_KEY', 'dev-only-change-me')
 
 with open('uploads/meeting_captions.txt', 'r', encoding='utf-8') as f:
     transcript_text = f.read()
